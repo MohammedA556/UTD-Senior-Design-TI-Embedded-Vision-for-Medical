@@ -1,0 +1,27 @@
+}•µ·…19.yaml
+title: "YOLOX_S_LITE_IMX219"
+log_level: 2
+
+inputs:
+  input0:
+    source: /dev/video-imx219-cam0
+    format: rggb
+    width: 1280
+    height: 720
+    framerate: 30
+    subdev-id: /dev/v4l-imx219-subdev0
+
+models:
+  model0:
+    model_path: /opt/model_zoo/yolox_surgical_tools_v2
+    viz_threshold: 0.6
+
+outputs:
+  output0:
+    sink: kmssink
+    width: 1920
+    height: 1080
+    overlay-perf-type: graph
+
+flows:
+  flow0: [input0, model0, output0, [320,150,1280,720]]
