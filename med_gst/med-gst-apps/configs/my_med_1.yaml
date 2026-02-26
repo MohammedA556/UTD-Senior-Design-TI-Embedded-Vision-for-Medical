@@ -21,6 +21,11 @@ outputs:
     width: 1920
     height: 1080
     
+    show_bottom_ui: true
+    bottom_ui_height: 96
+    bottom_ui_bg: "#101010"
+    bottom_ui_text: "INSTRUMENT CTR"
+    bottom_ui_text_color: "#FFFFFF"
 
 flows:
   flow0: [input0, model0, output0, [320,150,1280,720]]

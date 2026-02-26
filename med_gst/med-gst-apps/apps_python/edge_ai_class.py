@@ -38,6 +38,67 @@ import sys
 import os
 import time
 
+from utils import detect_frame_format
+
+
+import threading, time
+from collections import Counter
+import cv2
+import numpy as np
+
+_stop_bottom = False
+#_xcount = 0
+
+def start_detection_bar_updater(outputs, infer_pipes, interval=1.0):
+    
+    def loop():
+        _xcount = 0
+        while not _stop_bottom:
+            # 1. get detections
+            detections = utils.get_all_detections(infer_pipes)
+            summary = utils.summarize_counts(detections)
+
+            _xcount = _xcount + 1
+            print(f"[DEBUG] xCount{_xcount}")
+            # 2. update each output
+            for o in outputs.values():
+                if not getattr(o, "show_bottom_ui", False):
+                    continue
+
+                #o.bottom_ui_text = summary
+                #global _xcount
+                aVal = _xcount
+                o.bottom_ui_text = f"C: {aVal}"
+                
+                # 3. compose full frame
+                full = o.title_frame.copy()
+                hbar = o.bottom_ui_height
+
+                bar = utils.make_bottom_bar_bgr(
+                    width=full.shape[1],
+                    height=hbar,
+                    bg_color=o.bottom_ui_bg,
+                    text=o.bottom_ui_text,
+                    text_color=o.bottom_ui_text_color,
+                )
+
+                full[-hbar:, :, :] = bar
+
+                # 4. push
+                o.bg_pipe.start()
+                o.bg_pipe.push_frame(full, o.gst_bkgnd_sink)
+                o.bg_pipe.free()
+
+            time.sleep(interval)
+
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+    return t
+
+def stop_detection_bar_updater():
+    global _stop_bottom
+    _stop_bottom = True
+
 class EdgeAIDemo:
     """
     Abstract the functionality required for the Edge AI demo.
@@ -199,15 +260,25 @@ class EdgeAIDemo:
         """
         Member function to start the demo
         """
+
+        for o in self.outputs.values():
+            if hasattr(o, "title_frame") and o.title_frame is not None:
+                fmt = detect_frame_format(o.title_frame)
+                print(f"[DEBUG] Output {getattr(o,'name', 'unknown')}: title_frame.shape={o.title_frame.shape}, dtype={o.title_frame.dtype}, detected_format={fmt}")
+            else:
+               print(f"[DEBUG] Output {getattr(o,'name','unknown')}: no title_frame available")
+
         for o in self.outputs.values():
             if o.mosaic:
                 o.bg_pipe.start()
                 o.bg_pipe.push_frame(o.title_frame, o.gst_bkgnd_sink)
+                
                 o.bg_pipe.free()
 
         self.gst_pipe.start()
         for i in self.infer_pipes:
             i.start()
+        self.bottom_bar_thread = start_detection_bar_updater(self.outputs, self.infer_pipes, interval=1.0)
 
         print("==========[INPUT PIPELINE(S)]==========\n")
         for index, pipe in enumerate(self.gst_pipe.src_pipe):
@@ -245,6 +316,7 @@ class EdgeAIDemo:
         # Issue stop commands to the inference pipes
         for i in self.infer_pipes:
             i.stop()
+        stop_detection_bar_updater()
 
         self.gst_pipe.free()
 

@@ -37,8 +37,8 @@ np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
 
 def create_title_frame(title, width, height,
-                       bottom_text="TEST", bottom_height=160,
-                       bottom_bg="#AC0000", bottom_text_color="#FFFFFF"):
+                       bottom_text="TEST", bottom_height=200,
+                       bottom_bg="#3D2727", bottom_text_color="#FFFFFF"):
     frame = np.zeros((height, width, 3), np.uint8)
     if title != None:
         frame = cv2.putText(
@@ -53,28 +53,30 @@ def create_title_frame(title, width, height,
         frame = cv2.putText(
             frame, title, (40, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2
         )
-    
 
-    if bottom_text:
+    #if bottom_text:
         # convert hex to BGR tuple
-        bg = bottom_bg.lstrip('#')
-        bg_bgr = (int(bg[4:6], 16), int(bg[2:4], 16), int(bg[0:2], 16))
-        txt = bottom_text_color.lstrip('#')
-        txt_bgr = (int(txt[4:6], 16), int(txt[2:4], 16), int(txt[0:2], 16))
+        #bg = bottom_bg.lstrip('#')
+        #bg_bgr = (int(bg[4:6], 16), int(bg[2:4], 16), int(bg[0:2], 16))
+        #txt = bottom_text_color.lstrip('#')
+        #txt_bgr = (int(txt[4:6], 16), int(txt[2:4], 16), int(txt[0:2], 16))
 
         # rectangle coordinates
-        y0 = height - bottom_height
-        y1 = height
-        cv2.rectangle(frame, (0, y0), (width, y1), bg_bgr, thickness=-1)
+        #y0 = height - bottom_height
+        #y1 = height
+        #cv2.rectangle(frame, (0, y0), (width, y1), bg_bgr, thickness=-1)
 
         # text placement (left padded)
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = max(0.5, width / 1280.0)
-        thickness = 1 if font_scale < 1 else 2
-        (tw, th), _ = cv2.getTextSize(bottom_text, font, font_scale, thickness)
-        text_x = 10
-        text_y = y0 + (bottom_height + th) // 2
-        cv2.putText(frame, bottom_text, (text_x, text_y), font, font_scale, txt_bgr, thickness, cv2.LINE_AA)
+        #font = cv2.FONT_HERSHEY_SIMPLEX
+        #font_scale = max(0.5, width / 1280.0)
+        #thickness = 1 if font_scale < 1 else 2
+        #(tw, th), _ = cv2.getTextSize(bottom_text, font, font_scale, thickness)
+        #text_x = 10
+        #text_y = y0 + (bottom_height + th) // 2
+        #cv2.putText(frame, bottom_text, (text_x, text_y), font, font_scale, txt_bgr, thickness, cv2.LINE_AA)
+
+
+
 
     return frame
 

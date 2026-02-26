@@ -41,11 +41,122 @@ import sys
 import argparse
 import yaml
 import os
+import numpy as np
+import cv2
+
+from collections import Counter
 
 report_list = []
 print_stdout = False
 stop_reporting_loop = False
 
+def summarize_counts(detections, max_items=10):
+    labels = []
+    for d in detections:
+        lbl = d.get("label") or d.get("class") or "obj"
+        labels.append(lbl)
+
+    if not labels:
+        return "No detections"
+
+    cnt = Counter(labels)
+    parts = [f"{k} x{v}" for k, v in cnt.most_common(max_items)]
+    return "   ".join(parts)
+
+
+def get_all_detections(infer_pipes):
+    detections = []
+    for ip in infer_pipes:
+        res = None
+
+        # Try common attributes
+        for attr in ("latest_result", "last_result", "result", "latest"):
+            if hasattr(ip, attr):
+                res = getattr(ip, attr)
+                if res:
+                    break
+
+        # Try queue
+        if res is None:
+            q = getattr(ip, "results_queue", None) or getattr(ip, "output_queue", None)
+            if q:
+                try:
+                    import queue
+                    if isinstance(q, queue.Queue):
+                        while not q.empty():
+                            res = q.get_nowait()
+                    else:
+                        res = q[-1] if len(q) else None
+                except:
+                    pass
+
+        # Normalize
+        if not res:
+            continue
+
+        if isinstance(res, dict):
+            if "detections" in res:
+                detections.extend(res["detections"])
+            elif "objects" in res:
+                detections.extend(res["objects"])
+        elif isinstance(res, list):
+            detections.extend(res)
+        elif hasattr(res, "detections"):
+            detections.extend(res.detections)
+
+    return detections
+
+def make_bottom_bar_bgr(width, height, bg_color="#101010", text="", text_color="#FFFFFF"):
+    """
+    Create a BGR bottom bar image for the TI EdgeAI demo.
+    width, height : dimensions of the bar
+    bg_color      : hex string like "#101010"
+    text          : optional text to draw
+    text_color    : hex string like "#FFFFFF"
+    """
+
+    # Convert hex â†’ BGR tuple
+    bg = bg_color.lstrip('#')
+    bg_bgr = (int(bg[4:6],16), int(bg[2:4],16), int(bg[0:2],16))
+
+    txt = text_color.lstrip('#')
+    txt_bgr = (int(txt[4:6],16), int(txt[2:4],16), int(txt[0:2],16))
+
+    # Create bar
+    bar = np.zeros((height, width, 3), dtype=np.uint8)
+    bar[:] = bg_bgr
+
+    # Draw text if provided
+    if text:
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = max(0.5, width / 1280.0)
+        thickness = 1 if font_scale < 1 else 2
+
+        (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
+        x = 10
+        y = (height + th) // 2
+
+        cv2.putText(bar, text, (x, y), font, font_scale, txt_bgr, thickness, cv2.LINE_AA)
+
+    return bar
+
+def detect_frame_format(frame, expected_height=None, expected_width=None):
+    if not isinstance(frame, np.ndarray):
+        return "non-numpy (GstBuffer or custom)"
+    if frame.ndim == 3 and frame.shape[2] in (3,4):
+        return "BGR_or_RGB" if frame.dtype == np.uint8 else "3-channel unknown dtype"
+    if frame.ndim == 2:
+        h, w = frame.shape
+        # NV12: total height = H + H//2  => h * 2 == 3 * H  => H = (2/3)*h
+        if (h * 2) % 3 == 0:
+            H = (h * 2) // 3
+            if expected_height is None or expected_height == H:
+                return "NV12_like (Y + interleaved UV)"
+        # I420: Y plane H, then U and V each H//4 rows => total rows = H + H//4 + H//4 = H*1.5
+        if (h * 2) % 3 == 0:
+            return "YUV planar (I420) possible"
+        return "2D gray or unknown layout"
+    return "unknown"
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
