@@ -52,19 +52,6 @@ stop_reporting_loop = False
 
 global_ui_text = "C: 0"
 
-def summarize_counts(detections, max_items=10):
-    labels = []
-    for d in detections:
-        lbl = d.get("label") or d.get("class") or "obj"
-        labels.append(lbl)
-
-    if not labels:
-        return "No detections"
-
-    cnt = Counter(labels)
-    parts = [f"{k} x{v}" for k, v in cnt.most_common(max_items)]
-    return "   ".join(parts)
-
 
 def get_all_detections(infer_pipes):
     detections = []

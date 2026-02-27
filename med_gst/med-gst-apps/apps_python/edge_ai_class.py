@@ -52,14 +52,10 @@ def start_detection_bar_updater(outputs, infer_pipes, interval=1.0):
     def loop():
         _xcount = 0
         while not _stop_bottom:
-            # 1. get detections
-            detections = utils.get_all_detections(infer_pipes)
-            summary = utils.summarize_counts(detections)
 
             _xcount += 1
             #print(f"[DEBUG] xCount{_xcount}")
             
-            # 2. Update the global state instead of GStreamer directly
             utils.global_ui_text = f"C: {_xcount} | {summary}"
             
             time.sleep(interval)

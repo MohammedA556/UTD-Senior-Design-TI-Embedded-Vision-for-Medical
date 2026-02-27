@@ -206,6 +206,11 @@ class PostProcessDetection(PostProcess):
             img: Input frame
             results: output of inference
         """
+        orig_h, orig_w = img.shape[:2]
+
+        ui_height = int(orig_h * 0.2)
+        video_height = orig_h - ui_height
+
         for i, r in enumerate(results):
             r = np.squeeze(r)
             if r.ndim == 1:
@@ -269,32 +274,40 @@ class PostProcessDetection(PostProcess):
             self.debug.log(self.debug_str)
             self.debug_str = ""
 
-        # 3. Format the tallies into a summary string
-        if frame_counts:
-            summary_parts = [f"{name} x{count}" for name, count in frame_counts.most_common(10)]
-            summary_text = "   ".join(summary_parts)
-        else:
-            summary_text = "No Detections"
+        img_resized = cv2.resize(img, (orig_w, video_height))
 
-        # 4. Draw the UI with the dynamic counts directly on the frame
-        height, width = img.shape[:2]
-        bar_height = 40 
+        # 4. Create a blank black canvas of the ORIGINAL pipeline size
+        canvas = np.zeros((orig_h, orig_w, 3), dtype=np.uint8)
+
+        # 5. Place the resized video at the top
+        canvas[0:video_height, 0:orig_w] = img_resized
+
+        # 6. Draw your "Bigger" UI in the footer (the remaining black space)
+        # You now have a clean black background to work with!
+        summary_text = " | ".join([f"{n}: {c}" for n, c in frame_counts.items()]) if frame_counts else "SYSTEM READY - NO DETECTIONS"
         
-        overlay = img.copy()
-        cv2.rectangle(overlay, (0, height - bar_height), (width, height), (16, 16, 16), -1)
-        cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
+        ui_bg_color = (0, 29, 63) # A dark charcoal/blue
+        
+        # Draw a solid rectangle for the footer
+        cv2.rectangle(canvas, 
+                      (0, video_height),       # Top-left corner
+                      (orig_w, orig_h),        # Bottom-right corner
+                      ui_bg_color, 
+                      -1)
 
-        cv2.putText(
-            img, 
-            summary_text, 
-            (10, height - 12), 
-            cv2.FONT_HERSHEY_SIMPLEX, 
-            0.6, 
-            (255, 255, 255), 
-            2
-        )
+        # Draw a separator line
+        cv2.line(canvas, (0, video_height), (orig_w, video_height), (50, 50, 50), 2)
 
-        return img
+        # Main Title in UI Bar
+        cv2.putText(canvas, "MEDVISION BOTS ANALYTICS", (20, video_height + 30), 
+                    cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 1)
+
+        # Dynamic Counts
+        cv2.putText(canvas, summary_text, (20, video_height + 70), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+        # 7. Return the canvas (must be the same size as the input 'img')
+        return canvas
 
     def overlay_bounding_box(self, frame, box, class_name, color):
         """
