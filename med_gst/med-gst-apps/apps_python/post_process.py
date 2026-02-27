@@ -33,6 +33,7 @@ import numpy as np
 import copy
 import debug
 import utils
+from collections import Counter
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
@@ -54,28 +55,6 @@ def create_title_frame(title, width, height,
         frame = cv2.putText(
             frame, title, (40, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2
         )
-    
-    #if bottom_text:
-        # convert hex to BGR tuple
-        #bg = bottom_bg.lstrip('#')
-        #bg_bgr = (int(bg[4:6], 16), int(bg[2:4], 16), int(bg[0:2], 16))
-        #txt = bottom_text_color.lstrip('#')
-        #txt_bgr = (int(txt[4:6], 16), int(txt[2:4], 16), int(txt[0:2], 16))
-
-        # rectangle coordinates
-        #y0 = height - bottom_height
-        #y1 = height
-        #cv2.rectangle(frame, (0, y0), (width, y1), bg_bgr, thickness=-1)
-
-        # text placement (left padded)
-        #font = cv2.FONT_HERSHEY_SIMPLEX
-        #font_scale = max(0.5, width / 1280.0)
-        #thickness = 1 if font_scale < 1 else 2
-        #(tw, th), _ = cv2.getTextSize(bottom_text, font, font_scale, thickness)
-        #text_x = 10
-        #text_y = y0 + (bottom_height + th) // 2
-        #cv2.putText(frame, bottom_text, (text_x, text_y), font, font_scale, txt_bgr, thickness, cv2.LINE_AA)
-
 
 
     return frame
@@ -257,6 +236,8 @@ class PostProcessDetection(PostProcess):
             bbox[..., (0, 2)] /= self.model.resize[0]
             bbox[..., (1, 3)] /= self.model.resize[1]
 
+        frame_counts = Counter()
+
         for b in bbox:
             if b[5] > self.model.viz_threshold:
                 if type(self.model.label_offset) == dict:
@@ -279,27 +260,33 @@ class PostProcessDetection(PostProcess):
                     class_name = "UNDEFINED"
                     color = (20, 220, 20)
 
+                if class_name != "UNDEFINED":
+                    frame_counts[class_name] += 1
+
                 img = self.overlay_bounding_box(img, b, class_name, color)
 
         if self.debug:
             self.debug.log(self.debug_str)
             self.debug_str = ""
 
+        # 3. Format the tallies into a summary string
+        if frame_counts:
+            summary_parts = [f"{name} x{count}" for name, count in frame_counts.most_common(10)]
+            summary_text = "   ".join(summary_parts)
+        else:
+            summary_text = "No Detections"
+
+        # 4. Draw the UI with the dynamic counts directly on the frame
         height, width = img.shape[:2]
-        bar_height = 40 # Adjust as needed
+        bar_height = 40 
         
-        # 1. Create a semi-transparent or solid overlay at the bottom of the frame
         overlay = img.copy()
         cv2.rectangle(overlay, (0, height - bar_height), (width, height), (16, 16, 16), -1)
-        
-        # Blend the overlay for a nice UI effect (optional)
         cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
 
-        # 2. Fetch the dynamic text from utils and draw it
-        text = utils.global_ui_text 
         cv2.putText(
             img, 
-            text, 
+            summary_text, 
             (10, height - 12), 
             cv2.FONT_HERSHEY_SIMPLEX, 
             0.6, 
