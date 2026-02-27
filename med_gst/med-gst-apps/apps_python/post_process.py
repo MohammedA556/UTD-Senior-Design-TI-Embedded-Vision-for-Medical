@@ -32,6 +32,7 @@ import cv2
 import numpy as np
 import copy
 import debug
+import utils
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
@@ -53,7 +54,7 @@ def create_title_frame(title, width, height,
         frame = cv2.putText(
             frame, title, (40, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2
         )
-
+    
     #if bottom_text:
         # convert hex to BGR tuple
         #bg = bottom_bg.lstrip('#')
@@ -74,7 +75,6 @@ def create_title_frame(title, width, height,
         #text_x = 10
         #text_y = y0 + (bottom_height + th) // 2
         #cv2.putText(frame, bottom_text, (text_x, text_y), font, font_scale, txt_bgr, thickness, cv2.LINE_AA)
-
 
 
 
@@ -284,6 +284,28 @@ class PostProcessDetection(PostProcess):
         if self.debug:
             self.debug.log(self.debug_str)
             self.debug_str = ""
+
+        height, width = img.shape[:2]
+        bar_height = 40 # Adjust as needed
+        
+        # 1. Create a semi-transparent or solid overlay at the bottom of the frame
+        overlay = img.copy()
+        cv2.rectangle(overlay, (0, height - bar_height), (width, height), (16, 16, 16), -1)
+        
+        # Blend the overlay for a nice UI effect (optional)
+        cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
+
+        # 2. Fetch the dynamic text from utils and draw it
+        text = utils.global_ui_text 
+        cv2.putText(
+            img, 
+            text, 
+            (10, height - 12), 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            0.6, 
+            (255, 255, 255), 
+            2
+        )
 
         return img
 

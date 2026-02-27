@@ -50,6 +50,8 @@ report_list = []
 print_stdout = False
 stop_reporting_loop = False
 
+global_ui_text = "C: 0"
+
 def summarize_counts(detections, max_items=10):
     labels = []
     for d in detections:

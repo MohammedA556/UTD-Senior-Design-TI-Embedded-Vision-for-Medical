@@ -47,10 +47,8 @@ import cv2
 import numpy as np
 
 _stop_bottom = False
-#_xcount = 0
 
 def start_detection_bar_updater(outputs, infer_pipes, interval=1.0):
-    
     def loop():
         _xcount = 0
         while not _stop_bottom:
@@ -58,37 +56,12 @@ def start_detection_bar_updater(outputs, infer_pipes, interval=1.0):
             detections = utils.get_all_detections(infer_pipes)
             summary = utils.summarize_counts(detections)
 
-            _xcount = _xcount + 1
-            print(f"[DEBUG] xCount{_xcount}")
-            # 2. update each output
-            for o in outputs.values():
-                if not getattr(o, "show_bottom_ui", False):
-                    continue
-
-                #o.bottom_ui_text = summary
-                #global _xcount
-                aVal = _xcount
-                o.bottom_ui_text = f"C: {aVal}"
-                
-                # 3. compose full frame
-                full = o.title_frame.copy()
-                hbar = o.bottom_ui_height
-
-                bar = utils.make_bottom_bar_bgr(
-                    width=full.shape[1],
-                    height=hbar,
-                    bg_color=o.bottom_ui_bg,
-                    text=o.bottom_ui_text,
-                    text_color=o.bottom_ui_text_color,
-                )
-
-                full[-hbar:, :, :] = bar
-
-                # 4. push
-                o.bg_pipe.start()
-                o.bg_pipe.push_frame(full, o.gst_bkgnd_sink)
-                o.bg_pipe.free()
-
+            _xcount += 1
+            #print(f"[DEBUG] xCount{_xcount}")
+            
+            # 2. Update the global state instead of GStreamer directly
+            utils.global_ui_text = f"C: {_xcount} | {summary}"
+            
             time.sleep(interval)
 
     t = threading.Thread(target=loop, daemon=True)
