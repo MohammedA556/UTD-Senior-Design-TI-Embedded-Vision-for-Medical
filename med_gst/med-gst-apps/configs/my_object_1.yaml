@@ -12,7 +12,7 @@ inputs:
 
 models:
   model0:
-    model_path: /opt/model_zoo/ONR-OD-8200-yolox-nano-lite-mmdet-coco-416x416
+    model_path: /opt/model_zoo/TFL-OD-2020-ssdLite-mobDet-DSP-coco-320x320
     viz_threshold: 0.6
 
 outputs:

@@ -34,6 +34,7 @@ import copy
 import debug
 import utils
 from collections import Counter
+import time
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
@@ -198,6 +199,9 @@ class PostProcessClassification(PostProcess):
 class PostProcessDetection(PostProcess):
     def __init__(self, flow):
         super().__init__(flow)
+        self.start_time = None
+        self.history = []          # Will store tuples of: (timestamp, frame_counts_dict)
+        self.class_colors = {}     # Maps class_name -> official bounding box color
 
     def __call__(self, img, results):
         """
@@ -206,9 +210,14 @@ class PostProcessDetection(PostProcess):
             img: Input frame
             results: output of inference
         """
-        orig_h, orig_w = img.shape[:2]
+        if self.start_time is None:
+            self.start_time = time.time()
+        
+        current_time = time.time() - self.start_time
 
-        ui_height = int(orig_h * 0.2)
+        orig_h, orig_w = img.shape[:2]
+        # Increase UI height slightly (30%) to make room for the chart
+        ui_height = int(orig_h * 0.30)
         video_height = orig_h - ui_height
 
         for i, r in enumerate(results):
@@ -267,6 +276,7 @@ class PostProcessDetection(PostProcess):
 
                 if class_name != "UNDEFINED":
                     frame_counts[class_name] += 1
+                    self.class_colors[class_name] = color
 
                 img = self.overlay_bounding_box(img, b, class_name, color)
 
@@ -274,39 +284,80 @@ class PostProcessDetection(PostProcess):
             self.debug.log(self.debug_str)
             self.debug_str = ""
 
+        self.history.append((current_time, frame_counts))
+
+        # To prevent the array from growing infinitely and crashing RAM after hours of running,
+        # we can optionally cap the history to the last 5000 frames (approx 2-3 mins at 30fps).
+        # Remove this line if you want it to log infinitely forever.
+        if len(self.history) > 5000:
+            self.history.pop(0)
+
+        # 2. Resize video and create canvas
         img_resized = cv2.resize(img, (orig_w, video_height))
-
-        # 4. Create a blank black canvas of the ORIGINAL pipeline size
         canvas = np.zeros((orig_h, orig_w, 3), dtype=np.uint8)
-
-        # 5. Place the resized video at the top
         canvas[0:video_height, 0:orig_w] = img_resized
 
-        # 6. Draw your "Bigger" UI in the footer (the remaining black space)
-        # You now have a clean black background to work with!
-        summary_text = " | ".join([f"{n}: {c}" for n, c in frame_counts.items()]) if frame_counts else "SYSTEM READY - NO DETECTIONS"
-        
-        ui_bg_color = (0, 29, 63) # A dark charcoal/blue
-        
-        # Draw a solid rectangle for the footer
-        cv2.rectangle(canvas, 
-                      (0, video_height),       # Top-left corner
-                      (orig_w, orig_h),        # Bottom-right corner
-                      ui_bg_color, 
-                      -1)
+        # 3. Draw the UI Background
+        ui_bg_color = (40, 30, 30) # Dark Charcoal
+        cv2.rectangle(canvas, (0, video_height), (orig_w, orig_h), ui_bg_color, -1)
+        cv2.line(canvas, (0, video_height), (orig_w, video_height), (0, 255, 0), 2)
 
-        # Draw a separator line
-        cv2.line(canvas, (0, video_height), (orig_w, video_height), (50, 50, 50), 2)
+        # 4. Text Summary Header
+        summary_text = " | ".join([f"{n}: {c}" for n, c in frame_counts.items()]) if frame_counts else "NO DETECTIONS"
+        cv2.putText(canvas, "LIVE ANALYTICS", (20, video_height + 25), 
+                    cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
+        cv2.putText(canvas, summary_text, (250, video_height + 25), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-        # Main Title in UI Bar
-        cv2.putText(canvas, "MEDVISION BOTS ANALYTICS", (20, video_height + 30), 
-                    cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 1)
+        # 5. --- DRAW THE DYNAMIC LINE CHART ---
+        chart_x = 20
+        chart_y = video_height + 40
+        chart_w = orig_w - 40
+        chart_h = ui_height - 60
 
-        # Dynamic Counts
-        cv2.putText(canvas, summary_text, (20, video_height + 70), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        # Draw Chart Background Area (slightly darker)
+        cv2.rectangle(canvas, (chart_x, chart_y), (chart_x + chart_w, chart_y + chart_h), (50, 0, 0), -1)
 
-        # 7. Return the canvas (must be the same size as the input 'img')
+        if len(self.history) > 1:
+            # Determine scales
+            max_time = max(current_time, 1.0)
+            
+            # Find the max object count across all history to scale the Y-axis
+            max_count = 1
+            all_seen_classes = set()
+            for _, counts in self.history:
+                if counts:
+                    max_count = max(max_count, max(counts.values()))
+                    all_seen_classes.update(counts.keys())
+            
+            # Draw grid lines for the chart
+            cv2.line(canvas, (chart_x, chart_y + chart_h), (chart_x + chart_w, chart_y + chart_h), (100, 100, 100), 1)
+            cv2.putText(canvas, f"Max: {max_count}", (chart_x + 5, chart_y + 15), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
+
+            # Draw a line for each class observed so far
+            for cls in all_seen_classes:
+                pts = []
+                color = self.class_colors.get(cls, (255, 255, 255))
+                
+                for t, counts in self.history:
+                    count = counts.get(cls, 0)
+                    
+                    # Math to map (time, count) to (pixel_X, pixel_Y)
+                    # X scales down automatically because t is divided by max_time
+                    px = chart_x + int((t / max_time) * chart_w)
+                    
+                    # Y maps such that 0 is at the bottom (chart_y + chart_h) and max_count is at the top
+                    py = chart_y + chart_h - int((count / max_count) * chart_h)
+                    pts.append((px, py))
+                
+                # Draw the line efficiently
+                pts_arr = np.array(pts, np.int32).reshape((-1, 1, 2))
+                cv2.polylines(canvas, [pts_arr], isClosed=False, color=color, thickness=2)
+
+                # Draw a dot at the current end of the line
+                last_pt = pts[-1]
+                cv2.circle(canvas, last_pt, 4, color, -1)
         return canvas
 
     def overlay_bounding_box(self, frame, box, class_name, color):

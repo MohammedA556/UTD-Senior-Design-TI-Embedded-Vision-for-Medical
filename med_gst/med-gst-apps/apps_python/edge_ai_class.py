@@ -46,28 +46,6 @@ from collections import Counter
 import cv2
 import numpy as np
 
-_stop_bottom = False
-
-def start_detection_bar_updater(outputs, infer_pipes, interval=1.0):
-    def loop():
-        _xcount = 0
-        while not _stop_bottom:
-
-            _xcount += 1
-            #print(f"[DEBUG] xCount{_xcount}")
-            
-            utils.global_ui_text = f"C: {_xcount} | {summary}"
-            
-            time.sleep(interval)
-
-    t = threading.Thread(target=loop, daemon=True)
-    t.start()
-    return t
-
-def stop_detection_bar_updater():
-    global _stop_bottom
-    _stop_bottom = True
-
 class EdgeAIDemo:
     """
     Abstract the functionality required for the Edge AI demo.
@@ -247,7 +225,7 @@ class EdgeAIDemo:
         self.gst_pipe.start()
         for i in self.infer_pipes:
             i.start()
-        self.bottom_bar_thread = start_detection_bar_updater(self.outputs, self.infer_pipes, interval=1.0)
+        
 
         print("==========[INPUT PIPELINE(S)]==========\n")
         for index, pipe in enumerate(self.gst_pipe.src_pipe):
@@ -285,7 +263,7 @@ class EdgeAIDemo:
         # Issue stop commands to the inference pipes
         for i in self.infer_pipes:
             i.stop()
-        stop_detection_bar_updater()
+        
 
         self.gst_pipe.free()
 
