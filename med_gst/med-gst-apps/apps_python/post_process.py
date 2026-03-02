@@ -35,6 +35,9 @@ import debug
 import utils
 from collections import Counter
 import time
+import os
+import csv
+from datetime import datetime
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
@@ -203,6 +206,34 @@ class PostProcessDetection(PostProcess):
         self.history = []          # Will store tuples of: (timestamp, frame_counts_dict)
         self.class_colors = {}     # Maps class_name -> official bounding box color
 
+        # --- NEW: CSV Logging State ---
+        self.log_dir = "./medvision_logs"  # Configurable: Change this path to wherever you want the logs saved
+        self.log_filepath = None
+        self.last_logged_counts = None     # Tracks changes
+        self.pending_log_entries = []      # Queue for the chunk dumper
+        self.frames_since_last_dump = 0
+
+    def _dump_logs_to_file(self):
+        """Helper function to append pending logs to the CSV file safely."""
+        if not self.pending_log_entries or not self.log_filepath:
+            return
+        
+        try:
+            # Open the file in 'append' mode ('a')
+            with open(self.log_filepath, 'a', newline='') as f:
+                writer = csv.writer(f)
+                for t, summary in self.pending_log_entries:
+                    writer.writerow([f"{t:.2f}", summary])
+            
+            # Clear the queue after a successful write
+            self.pending_log_entries.clear()
+        except Exception as e:
+            print(f"[WARNING] Could not write to log file: {e}")
+
+    def __del__(self):
+        """Attempt to dump any remaining logs when the program closes."""
+        self._dump_logs_to_file()
+
     def __call__(self, img, results):
         """
         Post process function for detection
@@ -210,8 +241,21 @@ class PostProcessDetection(PostProcess):
             img: Input frame
             results: output of inference
         """
+        # 1. Initialize start time and the CSV File
         if self.start_time is None:
             self.start_time = time.time()
+            
+            # Create the folder if it doesn't exist
+            os.makedirs(self.log_dir, exist_ok=True)
+            
+            # Generate file name: e.g., "detection_log_20240512_143000.csv"
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.log_filepath = os.path.join(self.log_dir, f"detection_log_{timestamp_str}.csv")
+            
+            # Write the CSV Header
+            with open(self.log_filepath, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Time (seconds)", "Detections"])
         
         current_time = time.time() - self.start_time
 
@@ -285,6 +329,22 @@ class PostProcessDetection(PostProcess):
             self.debug_str = ""
 
         self.history.append((current_time, frame_counts))
+
+        if self.last_logged_counts != frame_counts:
+            # Format as a clean string for the CSV: "Scalpel: 1 | Suture: 2"
+            summary_str = " | ".join([f"{k}: {v}" for k, v in frame_counts.items()]) if frame_counts else "NO DETECTIONS"
+            
+            # Add to the pending queue
+            self.pending_log_entries.append((current_time, summary_str))
+            
+            # Update the last known state
+            self.last_logged_counts = dict(frame_counts)
+
+        # Trigger the file dump every 1000 frames
+        self.frames_since_last_dump += 1
+        if self.frames_since_last_dump >= 1000:
+            self._dump_logs_to_file()
+            self.frames_since_last_dump = 0
 
         # To prevent the array from growing infinitely and crashing RAM after hours of running,
         # we can optionally cap the history to the last 5000 frames (approx 2-3 mins at 30fps).
