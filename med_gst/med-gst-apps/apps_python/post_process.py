@@ -205,6 +205,7 @@ class PostProcessDetection(PostProcess):
         self.start_time = None
         self.history = []          # Will store tuples of: (timestamp, frame_counts_dict)
         self.class_colors = {}     # Maps class_name -> official bounding box color
+        self.last_seen = {}
 
         # --- NEW: CSV Logging State ---
         self.log_dir = "./medvision_logs"  # Configurable: Change this path to wherever you want the logs saved
@@ -321,6 +322,7 @@ class PostProcessDetection(PostProcess):
                 if class_name != "UNDEFINED":
                     frame_counts[class_name] += 1
                     self.class_colors[class_name] = color
+                    self.last_seen[class_name] = current_time
 
                 img = self.overlay_bounding_box(img, b, class_name, color)
 

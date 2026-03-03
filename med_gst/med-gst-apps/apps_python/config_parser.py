@@ -85,9 +85,6 @@ class Output:
             output_config: Dictionary of output params provided in config file
             title: Title of the demo to be added in the output
         """	
-        self.show_bottom_ui = output_config.get("show_bottom_ui", False)
-        self.bottom_ui_height = int(output_config.get("bottom_ui_height", 80))
-        self.bottom_ui_bg = output_config.get("bottom_ui_bg", "#000000")
 
         self.sink = output_config["sink"]
         self.width = output_config["width"]
@@ -147,9 +144,9 @@ class Output:
                 self.gst_disp_elements,
             ) = gst_wrapper.get_output_elements(self)
             if self.overlay_perf_type != None:
-                self.title_frame = create_title_frame(None, self.width, self.height)
+                self.title_frame = create_title_frame(None, self.width, self.height, "XTEST")
             else:
-                self.title_frame = create_title_frame(self.title, self.width, self.height)
+                self.title_frame = create_title_frame(self.title, self.width, self.height, "YTEST")
             self.gst_player = gst_wrapper.add_and_link(self.gst_background_elements)
             self.bg_pipe = gst_wrapper.GstPipe([], self.gst_player)
             self.gst_bkgnd_sink = self.bg_pipe.get_sink(
