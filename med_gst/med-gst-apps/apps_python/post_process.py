@@ -32,8 +32,74 @@ import cv2
 import numpy as np
 import copy
 import debug
+import time
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
+
+
+def draw_rounded_rectangle(frame, pt1, pt2, color, thickness=-1, radius=8):
+    """
+    Draw a rectangle with rounded corners.
+    
+    Args:
+        frame: Image to draw on
+        pt1: Top-left corner (x, y)
+        pt2: Bottom-right corner (x, y)
+        color: Color in BGR format
+        thickness: Line thickness (-1 for filled)
+        radius: Corner radius in pixels
+    """
+    x1, y1 = pt1
+    x2, y2 = pt2
+    
+    if thickness == -1:
+        cv2.rectangle(frame, (x1 + radius, y1), (x2 - radius, y2), color, -1)
+        cv2.rectangle(frame, (x1, y1 + radius), (x2, y2 - radius), color, -1)
+        cv2.circle(frame, (x1 + radius, y1 + radius), radius, color, -1)
+        cv2.circle(frame, (x2 - radius, y1 + radius), radius, color, -1)
+        cv2.circle(frame, (x1 + radius, y2 - radius), radius, color, -1)
+        cv2.circle(frame, (x2 - radius, y2 - radius), radius, color, -1)
+    else:
+        cv2.line(frame, (x1 + radius, y1), (x2 - radius, y1), color, thickness)
+        cv2.line(frame, (x2, y1 + radius), (x2, y2 - radius), color, thickness)
+        cv2.line(frame, (x1 + radius, y2), (x2 - radius, y2), color, thickness)
+        cv2.line(frame, (x1, y1 + radius), (x1, y2 - radius), color, thickness)
+        cv2.ellipse(frame, (x1 + radius, y1 + radius), (radius, radius), 180, 0, 90, color, thickness)
+        cv2.ellipse(frame, (x2 - radius, y1 + radius), (radius, radius), 270, 0, 90, color, thickness)
+        cv2.ellipse(frame, (x1 + radius, y2 - radius), (radius, radius), 90, 0, 90, color, thickness)
+        cv2.ellipse(frame, (x2 - radius, y2 - radius), (radius, radius), 0, 0, 90, color, thickness)
+    
+    return frame
+
+
+def draw_confidence_bar(frame, x, y, confidence, bar_width=100, bar_height=8):
+    """
+    Draw a color-coded confidence bar with percentage.
+    
+    Args:
+        frame: Image to draw on
+        x, y: Top-left position of the bar
+        confidence: Confidence value (0.0 to 1.0)
+        bar_width: Width of the bar in pixels
+        bar_height: Height of the bar in pixels
+    """
+    draw_rounded_rectangle(frame, (x, y), (x + bar_width, y + bar_height), (50, 50, 50), -1, 4)
+    
+    fill_width = int(bar_width * confidence)
+    if confidence >= 0.7:
+        bar_color = (136, 255, 0)
+    elif confidence >= 0.5:
+        bar_color = (0, 215, 255)
+    else:
+        bar_color = (107, 107, 255)
+    
+    if fill_width > 0:
+        draw_rounded_rectangle(frame, (x, y), (x + fill_width, y + bar_height), bar_color, -1, 4)
+    
+    cv2.putText(frame, f"{int(confidence * 100)}%", (x + bar_width + 8, y + 7),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+    
+    return frame
 
 
 def create_title_frame(title, width, height):
@@ -45,11 +111,11 @@ def create_title_frame(title, width, height):
             (40, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.2,
-            (255, 0, 0),
+            (255, 212, 0),
             2,
         )
         frame = cv2.putText(
-            frame, title, (40, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2
+            frame, title, (40, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (136, 255, 0), 2
         )
     return frame
 
@@ -79,8 +145,56 @@ class PostProcess:
         self.model = flow.model
         self.debug = None
         self.debug_str = ""
+        self.frame_count = 0
+        self.fps = 0.0
+        self.last_time = time.time()
+        self.inference_time = 0
         if flow.debug_config and flow.debug_config.post_proc:
             self.debug = debug.Debug(flow.debug_config, "post")
+    
+    def update_performance_metrics(self, inference_time_ms=0):
+        """
+        Update FPS and performance metrics.
+        """
+        self.frame_count += 1
+        current_time = time.time()
+        elapsed = current_time - self.last_time
+        
+        if elapsed >= 1.0:
+            self.fps = self.frame_count / elapsed
+            self.frame_count = 0
+            self.last_time = current_time
+        
+        self.inference_time = inference_time_ms
+    
+    def draw_performance_panel(self, frame, detection_count=0):
+        """
+        Draw performance metrics panel in top-left corner.
+        """
+        panel_width = 280
+        panel_height = 110
+        
+        draw_rounded_rectangle(frame, (10, 10), (10 + panel_width, 10 + panel_height), 
+                             (40, 20, 0), -1, 8)
+        draw_rounded_rectangle(frame, (10, 10), (10 + panel_width, 10 + panel_height), 
+                             (255, 212, 0), 2, 8)
+        
+        cv2.putText(frame, "Performance Metrics", (20, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 212, 0), 1)
+        
+        cv2.putText(frame, "FPS:", (20, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        fps_color = (136, 255, 0) if self.fps >= 25 else (0, 215, 255) if self.fps >= 15 else (68, 68, 255)
+        cv2.putText(frame, f"{self.fps:.1f}", (120, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.4, fps_color, 1)
+        
+        cv2.putText(frame, "Inference Time:", (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        cv2.putText(frame, f"{self.inference_time:.0f} ms", (120, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 212, 0), 1)
+        
+        cv2.putText(frame, "Detections:", (20, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        cv2.putText(frame, str(detection_count), (120, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (136, 255, 0), 1)
+        
+        cv2.circle(frame, (270, 25), 5, (68, 68, 255), -1)
+        
+        return frame
 
     def get(flow):
         """
@@ -107,8 +221,10 @@ class PostProcessClassification(PostProcess):
             img: Input frame
             results: output of inference
         """
+        start_time = time.time()
         results = np.squeeze(results)
         img = self.overlay_topN_classnames(img, results)
+        self.inference_time = (time.time() - start_time) * 1000
 
         if self.debug:
             self.debug.log(self.debug_str)
@@ -126,34 +242,26 @@ class PostProcessClassification(PostProcess):
         be drawn
             results (numpy array): Output of the model run
         """
+        self.update_performance_metrics()
+        frame = self.draw_performance_panel(frame, detection_count=self.model.topN)
+        
         orig_width = frame.shape[1]
         orig_height = frame.shape[0]
-        row_size = 40 * orig_width // 1280
-        font_size = orig_width / 1280
+        row_size = 45 * orig_width // 1280
+        font_size = orig_width / 1280 * 0.6
         N = self.model.topN
         topN_classes = np.argsort(results)[: (-1 * N) - 1 : -1]
-        title_text = "Recognized Classes (Top %d):" % N
+        title_text = "Recognized Classes (Top %d)" % N
         font = cv2.FONT_HERSHEY_SIMPLEX
 
-        text_size, _ = cv2.getTextSize(title_text, font, font_size, 2)
-
-        bg_top_left = (0, (2 * row_size) - text_size[1] - 5)
-        bg_bottom_right = (text_size[0] + 10, (2 * row_size) + 3 + 5)
-        font_coord = (5, 2 * row_size)
-
-        cv2.rectangle(frame, bg_top_left, bg_bottom_right, (5, 11, 120), -1)
-
-        cv2.putText(
-            frame,
-            title_text,
-            font_coord,
-            font,
-            font_size,
-            (0, 255, 0),
-            2,
-        )
-        row = 3
+        start_y = 140
+        draw_rounded_rectangle(frame, (0, start_y), (500, start_y + 40), (80, 40, 0), -1, 8)
+        cv2.putText(frame, title_text, (10, start_y + 25), font, 0.7, (136, 255, 0), 2)
+        
+        y = start_y + 70
+        rank = 1
         for idx in topN_classes:
+            confidence = results[idx]
             idx = idx + self.model.label_offset
             if idx in self.model.dataset_info:
                 class_name = self.model.dataset_info[idx].name
@@ -166,23 +274,15 @@ class PostProcessClassification(PostProcess):
             else:
                 class_name = "UNDEFINED"
 
-            text_size, _ = cv2.getTextSize(class_name, font, font_size, 2)
-
-            bg_top_left = (0, (row_size * row) - text_size[1] - 5)
-            bg_bottom_right = (text_size[0] + 10, (row_size * row) + 3 + 5)
-            font_coord = (5, row_size * row)
-
-            cv2.rectangle(frame, bg_top_left, bg_bottom_right, (5, 11, 120), -1)
-            cv2.putText(
-                frame,
-                class_name,
-                font_coord,
-                font,
-                font_size,
-                (255, 255, 0),
-                2,
-            )
-            row = row + 1
+            draw_rounded_rectangle(frame, (5, y - 25), (495, y + 10), (80, 40, 0), -1, 6)
+            
+            cv2.putText(frame, f"{rank}.", (15, y), font, 0.6, (255, 212, 0), 2)
+            cv2.putText(frame, class_name, (45, y), font, 0.5, (255, 255, 255), 1)
+            
+            draw_confidence_bar(frame, 280, y - 12, confidence, bar_width=100, bar_height=8)
+            
+            y += 45
+            rank += 1
             if self.debug:
                 self.debug_str += class_name + "\n"
 
@@ -200,6 +300,8 @@ class PostProcessDetection(PostProcess):
             img: Input frame
             results: output of inference
         """
+        start_time = time.time()
+        
         for i, r in enumerate(results):
             r = np.squeeze(r)
             if r.ndim == 1:
@@ -230,8 +332,10 @@ class PostProcessDetection(PostProcess):
             bbox[..., (0, 2)] /= self.model.resize[0]
             bbox[..., (1, 3)] /= self.model.resize[1]
 
+        detection_count = 0
         for b in bbox:
             if b[5] > self.model.viz_threshold:
+                detection_count += 1
                 if type(self.model.label_offset) == dict:
                     class_name_idx = self.model.label_offset[int(b[4])]
                 else:
@@ -253,6 +357,10 @@ class PostProcessDetection(PostProcess):
                     color = (20, 220, 20)
 
                 img = self.overlay_bounding_box(img, b, class_name, color)
+        
+        self.inference_time = (time.time() - start_time) * 1000
+        self.update_performance_metrics()
+        img = self.draw_performance_panel(img, detection_count)
 
         if self.debug:
             self.debug.log(self.debug_str)
@@ -269,7 +377,8 @@ class PostProcessDetection(PostProcess):
             bbox : Bounding box co-ordinates in format [X1 Y1 X2 Y2]
             class_name : Name of the class to overlay
         """
-        box = [
+        confidence = box[5]
+        box_coords = [
             int(box[0] * frame.shape[1]),
             int(box[1] * frame.shape[0]),
             int(box[2] * frame.shape[1]),
@@ -277,32 +386,34 @@ class PostProcessDetection(PostProcess):
         ]
 
         box_color = color
-        luma = ((66*(color[0])+129*(color[1])+25*(color[2])+128)>>8)+16
-        if(luma >= 128):
-            text_color = (0, 0, 0)
-        else:
-            text_color = (255, 255, 255)
-
-        cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), box_color, 2)
-        cv2.rectangle(
-            frame,
-            (int((box[2] + box[0]) / 2) - 5, int((box[3] + box[1]) / 2) + 5),
-            (int((box[2] + box[0]) / 2) + 160, int((box[3] + box[1]) / 2) - 15),
-            box_color,
-            -1,
-        )
-        cv2.putText(
-            frame,
-            class_name,
-            (int((box[2] + box[0]) / 2), int((box[3] + box[1]) / 2)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            text_color,
-        )
+        
+        draw_rounded_rectangle(frame, (box_coords[0], box_coords[1]), 
+                             (box_coords[2], box_coords[3]), box_color, 3, 8)
+        
+        label_width = 180
+        label_height = 50
+        label_x = box_coords[0] + 10
+        label_y = box_coords[1] - label_height - 5
+        
+        if label_y < 0:
+            label_y = box_coords[1] + 5
+        
+        draw_rounded_rectangle(frame, (label_x, label_y), 
+                             (label_x + label_width, label_y + label_height), 
+                             box_color, -1, 6)
+        
+        cv2.putText(frame, class_name, (label_x + 8, label_y + 20),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        
+        cv2.putText(frame, "Confidence:", (label_x + 8, label_y + 35),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
+        
+        draw_confidence_bar(frame, label_x + 75, label_y + 28, confidence, 
+                          bar_width=90, bar_height=6)
 
         if self.debug:
             self.debug_str += class_name
-            self.debug_str += str(box) + "\n"
+            self.debug_str += str(box_coords) + "\n"
 
         return frame
 
@@ -383,6 +494,7 @@ class PostProcessKeypointDetection(PostProcess):
             img: Input frame
             results: output of inference
         """
+        start_time = time.time()
         output = np.squeeze(results[0])
 
         scale_x = img.shape[1] / self.model.resize[0]
@@ -394,24 +506,17 @@ class PostProcessKeypointDetection(PostProcess):
             np.array(output[:, 5]),
             np.array(output[:, 6:]),
         )
+        
+        detection_count = 0
         for idx in range(len(det_bboxes)):
             det_bbox = det_bboxes[idx]
             kpt = kpts[idx]
             if det_scores[idx] > self.model.viz_threshold:
+                detection_count += 1
                 det_bbox[..., (0, 2)] *= scale_x
                 det_bbox[..., (1, 3)] *= scale_y
 
-                # Drawing bounding box
-                img = cv2.rectangle(
-                    img,
-                    (int(det_bbox[0]), int(det_bbox[1])),
-                    (int(det_bbox[2]), int(det_bbox[3])),
-                    (0, 255, 0),
-                    2,
-                )
-
                 dataset_idx = int(det_labels[idx])
-                # Put Label
                 if type(self.model.label_offset) == dict:
                     dataset_idx = self.model.label_offset[dataset_idx]
                 else:
@@ -430,42 +535,58 @@ class PostProcessKeypointDetection(PostProcess):
                     skeleton = self.model.dataset_info[dataset_idx].skeleton
                     if not skeleton:
                         skeleton = []
-
                 else:
                     class_name = "UNDEFINED"
                     skeleton = []
 
-                cv2.putText(
-                    img,
-                    class_name,
-                    (int(det_bbox[0]), int(det_bbox[1]) + 15),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 0, 0),
-                    2,
-                )
+                draw_rounded_rectangle(img, 
+                                     (int(det_bbox[0]), int(det_bbox[1])),
+                                     (int(det_bbox[2]), int(det_bbox[3])),
+                                     (136, 255, 0), 3, 12)
 
-                # Drawing keypoints
+                label_width = 150
+                label_height = 30
+                label_x = int(det_bbox[0]) + 10
+                label_y = int(det_bbox[1]) - label_height - 5
+                
+                if label_y < 0:
+                    label_y = int(det_bbox[1]) + 5
+                
+                draw_rounded_rectangle(img, (label_x, label_y),
+                                     (label_x + label_width, label_y + label_height),
+                                     (136, 255, 0), -1, 6)
+                
+                cv2.putText(img, class_name, (label_x + 8, label_y + 20),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                
+                confidence_text = f"{int(det_scores[idx] * 100)}%"
+                cv2.putText(img, confidence_text, (label_x + label_width - 35, label_y + 20),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
                 num_kpts = len(kpt) // 3
+                keypoint_positions = []
                 for kidx in range(num_kpts):
                     kx, ky, conf = kpt[3 * kidx], kpt[3 * kidx + 1], kpt[3 * kidx + 2]
                     kx = int(kx * scale_x)
                     ky = int(ky * scale_y)
-                    if conf > 0.5:
-                        cv2.circle(img, (kx, ky), 3, (255, 0, 0), -1)
+                    keypoint_positions.append((kx, ky, conf))
 
-                # Drawing connections between keypoints
                 for sk in skeleton:
-                    pos1 = (kpt[(sk[0] - 1) * 3], kpt[(sk[0] - 1) * 3 + 1])
-                    pos1 = (int(pos1[0] * scale_x), int(pos1[1] * scale_y))
+                    if sk[0] - 1 < len(keypoint_positions) and sk[1] - 1 < len(keypoint_positions):
+                        pos1 = keypoint_positions[sk[0] - 1]
+                        pos2 = keypoint_positions[sk[1] - 1]
+                        
+                        if pos1[2] > 0.5 and pos2[2] > 0.5:
+                            cv2.line(img, (pos1[0], pos1[1]), (pos2[0], pos2[1]), 
+                                   (255, 157, 0), 3)
 
-                    pos2 = (kpt[(sk[1] - 1) * 3], kpt[(sk[1] - 1) * 3 + 1])
-                    pos2 = (int(pos2[0] * scale_x), int(pos2[1] * scale_y))
+                for kx, ky, conf in keypoint_positions:
+                    if conf > 0.5:
+                        cv2.circle(img, (kx, ky), 6, (255, 157, 0), -1)
+                        cv2.circle(img, (kx, ky), 3, (255, 255, 255), -1)
 
-                    conf1 = kpt[(sk[0] - 1) * 3 + 2]
-                    conf2 = kpt[(sk[1] - 1) * 3 + 2]
-                    if conf1 > 0.5 and conf2 > 0.5:
-                        cv2.line(img, pos1, pos2, (255, 0, 0), 1)
-
+        self.inference_time = (time.time() - start_time) * 1000
+        self.update_performance_metrics()
+        img = self.draw_performance_panel(img, detection_count)
 
         return img

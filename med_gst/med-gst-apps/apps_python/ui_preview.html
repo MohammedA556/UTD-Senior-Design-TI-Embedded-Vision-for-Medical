@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Vision UI Preview</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            color: white;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            background: linear-gradient(90deg, #00d4ff 0%, #00ff88 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 2.5em;
+            margin-bottom: 40px;
+            text-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+        .preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(650px, 1fr));
+            gap: 30px;
+            margin-top: 20px;
+        }
+        .preview-card {
+            background: rgba(42, 42, 60, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 
+                        0 0 20px rgba(0, 212, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .preview-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5),
+                        0 0 30px rgba(0, 212, 255, 0.2);
+        }
+        .preview-card h2 {
+            background: linear-gradient(90deg, #00d4ff 0%, #00ff88 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 0;
+            border-bottom: 2px solid rgba(0, 212, 255, 0.3);
+            padding-bottom: 12px;
+            font-size: 1.4em;
+            font-weight: 600;
+        }
+        .canvas-container {
+            background: #000;
+            border: 2px solid rgba(0, 212, 255, 0.4);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 15px;
+            box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.1),
+                        0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        .description {
+            color: #b8c5d6;
+            font-size: 14px;
+            margin-top: 15px;
+            line-height: 1.8;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+        }
+        .description strong {
+            color: #00d4ff;
+            font-weight: 600;
+        }
+        .description code {
+            background: rgba(0, 212, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #00ff88;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .ui-element {
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(0, 255, 136, 0.1) 100%);
+            padding: 14px;
+            margin: 12px 0;
+            border-left: 4px solid #00ff88;
+            border-radius: 6px;
+            box-shadow: 0 2px 10px rgba(0, 255, 136, 0.1);
+        }
+        .ui-element strong {
+            color: #00d4ff;
+            font-weight: 600;
+        }
+        @media (max-width: 1400px) {
+            .preview-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Medical Vision UI Preview - post_process_ui_edit.py</h1>
+        
+        <div class="preview-grid">
+            <!-- Title Frame -->
+            <div class="preview-card">
+                <h2>1. Title Frame</h2>
+                <div class="canvas-container">
+                    <canvas id="titleCanvas" width="1280" height="100"></canvas>
+                </div>
+                <div class="description">
+                    <strong>Function:</strong> <code>create_title_frame()</code><br>
+                    Shows the main title banner at the top of the application.
+                </div>
+                <div class="ui-element">
+                    <strong>Colors:</strong> Blue (255,0,0) for main title, Red (0,0,255) for subtitle<br>
+                    <strong>Font:</strong> HERSHEY_SIMPLEX, size 1.2 and 1.0
+                </div>
+            </div>
+
+            <!-- Classification UI -->
+            <div class="preview-card">
+                <h2>2. Classification UI</h2>
+                <div class="canvas-container">
+                    <canvas id="classificationCanvas" width="1280" height="720"></canvas>
+                </div>
+                <div class="description">
+                    <strong>Function:</strong> <code>overlay_topN_classnames()</code><br>
+                    Displays top N recognized classes with confidence scores.
+                </div>
+                <div class="ui-element">
+                    <strong>Background:</strong> Dark blue (5,11,120)<br>
+                    <strong>Title Color:</strong> Green (0,255,0)<br>
+                    <strong>Class Names:</strong> Yellow (255,255,0)
+                </div>
+            </div>
+
+            <!-- Detection UI -->
+            <div class="preview-card">
+                <h2>3. Object Detection UI</h2>
+                <div class="canvas-container">
+                    <canvas id="detectionCanvas" width="1280" height="720"></canvas>
+                </div>
+                <div class="description">
+                    <strong>Function:</strong> <code>overlay_bounding_box()</code><br>
+                    Shows bounding boxes around detected objects with labels.
+                </div>
+                <div class="ui-element">
+                    <strong>Box Color:</strong> Dataset-specific RGB colors<br>
+                    <strong>Text Color:</strong> Auto-calculated based on background luminance<br>
+                    <strong>Box Thickness:</strong> 2 pixels
+                </div>
+            </div>
+
+            <!-- Keypoint Detection UI -->
+            <div class="preview-card">
+                <h2>4. Keypoint Detection UI</h2>
+                <div class="canvas-container">
+                    <canvas id="keypointCanvas" width="1280" height="720"></canvas>
+                </div>
+                <div class="description">
+                    <strong>Function:</strong> <code>PostProcessKeypointDetection.__call__()</code><br>
+                    Displays skeleton keypoints and connections for pose estimation.
+                </div>
+                <div class="ui-element">
+                    <strong>Bounding Box:</strong> Green (0,255,0)<br>
+                    <strong>Keypoints:</strong> Blue circles (255,0,0), radius 3px<br>
+                    <strong>Skeleton Lines:</strong> Blue (255,0,0), thickness 1px
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Helper function to draw rounded rectangle
+        function roundRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+        }
+
+        // Helper function to draw info panel
+        function drawInfoPanel(ctx, fps, inferenceTime, detectionCount) {
+            // Semi-transparent background
+            ctx.fillStyle = 'rgba(0, 20, 40, 0.85)';
+            roundRect(ctx, 10, 10, 280, 110, 8);
+            ctx.fill();
+            
+            // Border
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.6)';
+            ctx.lineWidth = 2;
+            roundRect(ctx, 10, 10, 280, 110, 8);
+            ctx.stroke();
+            
+            // Title
+            ctx.font = 'bold 14px Arial';
+            ctx.fillStyle = '#00D4FF';
+            ctx.fillText('Performance Metrics', 20, 30);
+            
+            // FPS
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText('FPS:', 20, 55);
+            ctx.fillStyle = fps >= 25 ? '#00FF88' : fps >= 15 ? '#FFD700' : '#FF4444';
+            ctx.fillText(fps.toFixed(1), 120, 55);
+            
+            // Inference Time
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText('Inference Time:', 20, 75);
+            ctx.fillStyle = '#00D4FF';
+            ctx.fillText(inferenceTime + ' ms', 120, 75);
+            
+            // Detection Count
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText('Detections:', 20, 95);
+            ctx.fillStyle = '#00FF88';
+            ctx.fillText(detectionCount, 120, 95);
+            
+            // Recording indicator
+            ctx.fillStyle = '#FF4444';
+            ctx.beginPath();
+            ctx.arc(270, 25, 5, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        // Helper function to draw confidence bar
+        function drawConfidenceBar(ctx, x, y, confidence) {
+            const barWidth = 100;
+            const barHeight = 8;
+            
+            // Background
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            roundRect(ctx, x, y, barWidth, barHeight, 4);
+            ctx.fill();
+            
+            // Confidence fill
+            const fillWidth = barWidth * confidence;
+            if (confidence >= 0.7) {
+                ctx.fillStyle = '#00FF88';
+            } else if (confidence >= 0.5) {
+                ctx.fillStyle = '#FFD700';
+            } else {
+                ctx.fillStyle = '#FF6B6B';
+            }
+            roundRect(ctx, x, y, fillWidth, barHeight, 4);
+            ctx.fill();
+            
+            // Percentage text
+            ctx.font = 'bold 11px Arial';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText((confidence * 100).toFixed(0) + '%', x + barWidth + 8, y + 7);
+        }
+
+        // Title Frame with improved styling
+        const titleCtx = document.getElementById('titleCanvas').getContext('2d');
+        titleCtx.fillStyle = '#0A0A15';
+        titleCtx.fillRect(0, 0, 1280, 100);
+        
+        // Add gradient overlay
+        const titleGrad = titleCtx.createLinearGradient(0, 0, 1280, 0);
+        titleGrad.addColorStop(0, 'rgba(0, 212, 255, 0.1)');
+        titleGrad.addColorStop(0.5, 'rgba(0, 255, 136, 0.1)');
+        titleGrad.addColorStop(1, 'rgba(0, 212, 255, 0.1)');
+        titleCtx.fillStyle = titleGrad;
+        titleCtx.fillRect(0, 0, 1280, 100);
+        
+        titleCtx.font = 'bold 26px Arial';
+        titleCtx.fillStyle = '#00D4FF';
+        titleCtx.fillText('UT Dallas Senior Design Medvision Bots - Texas Instruments Edge', 40, 35);
+        titleCtx.font = 'bold 22px Arial';
+        titleCtx.fillStyle = '#00FF88';
+        titleCtx.fillText('Medical Vision Demo - Keypoint Detection', 40, 70);
+
+        // Classification UI with confidence scores
+        const classCtx = document.getElementById('classificationCanvas').getContext('2d');
+        classCtx.fillStyle = '#0F0F1E';
+        classCtx.fillRect(0, 0, 1280, 720);
+        
+        // Info panel
+        drawInfoPanel(classCtx, 28.5, 35, 5);
+        
+        // Title with better styling
+        classCtx.fillStyle = 'rgba(0, 40, 80, 0.8)';
+        roundRect(classCtx, 0, 140, 500, 40, 8);
+        classCtx.fill();
+        classCtx.font = 'bold 18px Arial';
+        classCtx.fillStyle = '#00FF88';
+        classCtx.fillText('Recognized Classes (Top 5)', 10, 165);
+        
+        const classes = [
+            {name: 'Medical/Stethoscope', conf: 0.94},
+            {name: 'Medical/Syringe', conf: 0.87},
+            {name: 'Medical/Mask', conf: 0.82},
+            {name: 'Medical/Thermometer', conf: 0.76},
+            {name: 'Medical/Gloves', conf: 0.68}
+        ];
+        
+        let y = 210;
+        classes.forEach((cls, idx) => {
+            // Background box
+            classCtx.fillStyle = 'rgba(0, 40, 80, 0.6)';
+            roundRect(classCtx, 5, y - 25, 490, 35, 6);
+            classCtx.fill();
+            
+            // Rank number
+            classCtx.font = 'bold 16px Arial';
+            classCtx.fillStyle = '#00D4FF';
+            classCtx.fillText(`${idx + 1}.`, 15, y);
+            
+            // Class name
+            classCtx.font = '15px Arial';
+            classCtx.fillStyle = '#FFFFFF';
+            classCtx.fillText(cls.name, 45, y);
+            
+            // Confidence bar
+            drawConfidenceBar(classCtx, 280, y - 12, cls.conf);
+            
+            y += 45;
+        });
+
+        // Detection UI with enhanced bounding boxes
+        const detCtx = document.getElementById('detectionCanvas').getContext('2d');
+        detCtx.fillStyle = '#0F0F1E';
+        detCtx.fillRect(0, 0, 1280, 720);
+        
+        // Info panel
+        drawInfoPanel(detCtx, 30.2, 28, 3);
+        
+        const detections = [
+            {x: 256, y: 144, w: 256, h: 216, label: 'Medical/Syringe', color: '#00FF88', conf: 0.92},
+            {x: 640, y: 216, w: 256, h: 216, label: 'Medical/Mask', color: '#00D4FF', conf: 0.85},
+            {x: 128, y: 432, w: 256, h: 216, label: 'Medical/Stethoscope', color: '#FF6B9D', conf: 0.78}
+        ];
+        
+        detections.forEach(det => {
+            // Shadow for depth
+            detCtx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            detCtx.shadowBlur = 10;
+            detCtx.shadowOffsetX = 3;
+            detCtx.shadowOffsetY = 3;
+            
+            // Rounded bounding box
+            detCtx.strokeStyle = det.color;
+            detCtx.lineWidth = 3;
+            roundRect(detCtx, det.x, det.y, det.w, det.h, 8);
+            detCtx.stroke();
+            
+            detCtx.shadowColor = 'transparent';
+            detCtx.shadowBlur = 0;
+            
+            // Label background
+            const labelWidth = 180;
+            const labelHeight = 50;
+            const labelX = det.x + 10;
+            const labelY = det.y - labelHeight - 5;
+            
+            detCtx.fillStyle = det.color;
+            roundRect(detCtx, labelX, labelY, labelWidth, labelHeight, 6);
+            detCtx.fill();
+            
+            // Label text
+            detCtx.fillStyle = '#000000';
+            detCtx.font = 'bold 13px Arial';
+            detCtx.fillText(det.label, labelX + 8, labelY + 20);
+            
+            // Confidence bar in label
+            detCtx.font = '11px Arial';
+            detCtx.fillText('Confidence:', labelX + 8, labelY + 35);
+            drawConfidenceBar(detCtx, labelX + 75, labelY + 28, det.conf);
+        });
+
+        // Keypoint Detection UI with color-coded body parts
+        const kptCtx = document.getElementById('keypointCanvas').getContext('2d');
+        kptCtx.fillStyle = '#0F0F1E';
+        kptCtx.fillRect(0, 0, 1280, 720);
+        
+        // Info panel
+        drawInfoPanel(kptCtx, 27.8, 42, 1);
+        
+        // Rounded bounding box with shadow
+        kptCtx.shadowColor = 'rgba(0, 255, 136, 0.4)';
+        kptCtx.shadowBlur = 15;
+        kptCtx.strokeStyle = '#00FF88';
+        kptCtx.lineWidth = 3;
+        roundRect(kptCtx, 300, 150, 300, 500, 12);
+        kptCtx.stroke();
+        kptCtx.shadowColor = 'transparent';
+        kptCtx.shadowBlur = 0;
+        
+        // Label with confidence
+        kptCtx.fillStyle = '#00FF88';
+        roundRect(kptCtx, 310, 125, 150, 30, 6);
+        kptCtx.fill();
+        kptCtx.fillStyle = '#000000';
+        kptCtx.font = 'bold 13px Arial';
+        kptCtx.fillText('Medical/Person', 318, 145);
+        
+        // Confidence indicator
+        kptCtx.fillStyle = '#FFFFFF';
+        kptCtx.font = '10px Arial';
+        kptCtx.fillText('89%', 425, 145);
+        
+        const keypoints = [
+            {x: 400, y: 200, label: 'Head', color: '#FF6B9D'},
+            {x: 450, y: 200, label: 'Neck', color: '#FF6B9D'},
+            {x: 425, y: 250, label: 'Chest', color: '#00D4FF'},
+            {x: 380, y: 350, label: 'L-Elbow', color: '#FFD700'},
+            {x: 470, y: 350, label: 'R-Elbow', color: '#FFD700'},
+            {x: 400, y: 450, label: 'L-Hip', color: '#00FF88'},
+            {x: 450, y: 450, label: 'R-Hip', color: '#00FF88'},
+            {x: 390, y: 550, label: 'L-Knee', color: '#9D6BFF'},
+            {x: 460, y: 550, label: 'R-Knee', color: '#9D6BFF'}
+        ];
+        
+        const skeleton = [[0,1], [1,2], [2,3], [2,4], [3,5], [4,6], [5,7], [6,8]];
+        
+        // Draw skeleton connections with gradient
+        skeleton.forEach(([i, j]) => {
+            const grad = kptCtx.createLinearGradient(
+                keypoints[i].x, keypoints[i].y,
+                keypoints[j].x, keypoints[j].y
+            );
+            grad.addColorStop(0, keypoints[i].color);
+            grad.addColorStop(1, keypoints[j].color);
+            
+            kptCtx.strokeStyle = grad;
+            kptCtx.lineWidth = 3;
+            kptCtx.beginPath();
+            kptCtx.moveTo(keypoints[i].x, keypoints[i].y);
+            kptCtx.lineTo(keypoints[j].x, keypoints[j].y);
+            kptCtx.stroke();
+        });
+        
+        // Draw keypoints
+        keypoints.forEach((kpt, idx) => {
+            // Glow effect
+            kptCtx.shadowColor = kpt.color;
+            kptCtx.shadowBlur = 10;
+            
+            // Keypoint circle
+            kptCtx.fillStyle = kpt.color;
+            kptCtx.beginPath();
+            kptCtx.arc(kpt.x, kpt.y, 6, 0, 2 * Math.PI);
+            kptCtx.fill();
+            
+            // White center
+            kptCtx.fillStyle = '#FFFFFF';
+            kptCtx.beginPath();
+            kptCtx.arc(kpt.x, kpt.y, 3, 0, 2 * Math.PI);
+            kptCtx.fill();
+            
+            kptCtx.shadowColor = 'transparent';
+            kptCtx.shadowBlur = 0;
+        });
+    </script>
+</body>
+</html>
