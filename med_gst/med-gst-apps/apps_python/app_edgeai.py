@@ -58,7 +58,8 @@ def show_final_summary(last_seen, class_colors, start_time):
     cv2.line(canvas, (margin_x, timeline_y), (margin_x + timeline_w, timeline_y), (150, 150, 150), 2)
 
     sorted_items = sorted(last_seen.items(), key=lambda x: x[1], reverse=True)
-    for i, (cls, t) in enumerate(sorted_items[:10]): # Show top 10
+    for i, (cls_tuple, t) in enumerate(sorted_items[:10]): # Show top 10
+        cls, count = cls_tuple
         color = class_colors.get(cls, (0, 255, 0))
         y = 300 + (i * 45)
         line_y = timeline_y + 20 + (i*5)
@@ -68,7 +69,7 @@ def show_final_summary(last_seen, class_colors, start_time):
         cv2.circle(canvas, (x_pos, timeline_y), 10, color, -1)
         cv2.line(canvas, (x_pos, timeline_y), (x_pos, line_y), color, 1) 
         cv2.putText(canvas, f"{i}", (x_pos, line_y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-        text = f"{i}. {cls}: Last seen at t={t:.2f}, Timestamp: {time_str}"
+        text = f"{i}. {cls}, C={count}: Last seen at t={t:.2f}, Timestamp: {time_str}"
         cv2.putText(canvas, text, (margin_x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
     # 2. Save a temporary file for GStreamer to read

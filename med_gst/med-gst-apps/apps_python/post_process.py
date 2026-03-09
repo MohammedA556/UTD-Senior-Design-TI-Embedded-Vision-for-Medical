@@ -323,7 +323,6 @@ class PostProcessDetection(PostProcess):
                 if class_name != "UNDEFINED":
                     self.accum_frame_counts[class_name] += 1
                     self.class_colors[class_name] = color
-                    self.last_seen[class_name] = current_time
 
                 img = self.overlay_bounding_box(img, b, class_name, color)
 
@@ -338,6 +337,7 @@ class PostProcessDetection(PostProcess):
                 avg_count = math.floor(0.5 + count / 3)
                 if avg_count > 0:
                     frame_counts[class_name] += avg_count
+                    self.last_seen[(class_name, avg_count)] = current_time
             self.accum_frame_counts.clear()
             self.frames_since_last_avg = 0
         elif self.history:
