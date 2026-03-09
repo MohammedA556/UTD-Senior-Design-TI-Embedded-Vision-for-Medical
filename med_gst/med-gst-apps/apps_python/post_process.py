@@ -37,6 +37,7 @@ from collections import Counter
 import time
 import os
 import csv
+import math
 from datetime import datetime
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
@@ -206,6 +207,8 @@ class PostProcessDetection(PostProcess):
         self.history = []          # Will store tuples of: (timestamp, frame_counts_dict)
         self.class_colors = {}     # Maps class_name -> official bounding box color
         self.last_seen = {}
+        self.accum_frame_counts = Counter()
+        self.frames_since_last_avg = 0
 
         # --- NEW: CSV Logging State ---
         self.log_dir = "./medvision_logs"  # Configurable: Change this path to wherever you want the logs saved
@@ -295,8 +298,6 @@ class PostProcessDetection(PostProcess):
             bbox[..., (0, 2)] /= self.model.resize[0]
             bbox[..., (1, 3)] /= self.model.resize[1]
 
-        frame_counts = Counter()
-
         for b in bbox:
             if b[5] > self.model.viz_threshold:
                 if type(self.model.label_offset) == dict:
@@ -320,7 +321,7 @@ class PostProcessDetection(PostProcess):
                     color = (20, 220, 20)
 
                 if class_name != "UNDEFINED":
-                    frame_counts[class_name] += 1
+                    self.accum_frame_counts[class_name] += 1
                     self.class_colors[class_name] = color
                     self.last_seen[class_name] = current_time
 
@@ -330,6 +331,17 @@ class PostProcessDetection(PostProcess):
             self.debug.log(self.debug_str)
             self.debug_str = ""
 
+        frame_counts = Counter()
+        self.frames_since_last_avg += 1
+        if self.frames_since_last_avg >= 3:
+            for class_name, count in self.accum_frame_counts.items():
+                avg_count = math.floor(0.5 + count / 3)
+                if avg_count > 0:
+                    frame_counts[class_name] += avg_count
+            self.accum_frame_counts.clear()
+            self.frames_since_last_avg = 0
+        elif self.history:
+            frame_counts = self.history[-1][1]
         self.history.append((current_time, frame_counts))
 
         if self.last_logged_counts != frame_counts:
