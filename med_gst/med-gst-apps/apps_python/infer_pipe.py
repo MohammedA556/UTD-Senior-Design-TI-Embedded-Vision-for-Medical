@@ -110,6 +110,7 @@ class InferPipe:
             result = self.run_time(input_img)
             end = time()
             self.sub_flow.report.report_proctime("dl-inference", (end - start))
+            self.post_proc.update_inference((end-start))
 
             if self.infer_debug:
                 self.infer_debug.log(str(result))

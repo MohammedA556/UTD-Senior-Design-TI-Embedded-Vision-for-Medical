@@ -42,6 +42,70 @@ from datetime import datetime
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
+def draw_rounded_rectangle(frame, pt1, pt2, color, thickness=-1, radius=8):
+    """
+    Draw a rectangle with rounded corners.
+    
+    Args:
+        frame: Image to draw on
+        pt1: Top-left corner (x, y)
+        pt2: Bottom-right corner (x, y)
+        color: Color in BGR format
+        thickness: Line thickness (-1 for filled)
+        radius: Corner radius in pixels
+    """
+    x1, y1 = pt1
+    x2, y2 = pt2
+    
+    if thickness == -1:
+        cv2.rectangle(frame, (x1 + radius, y1), (x2 - radius, y2), color, -1)
+        cv2.rectangle(frame, (x1, y1 + radius), (x2, y2 - radius), color, -1)
+        cv2.circle(frame, (x1 + radius, y1 + radius), radius, color, -1)
+        cv2.circle(frame, (x2 - radius, y1 + radius), radius, color, -1)
+        cv2.circle(frame, (x1 + radius, y2 - radius), radius, color, -1)
+        cv2.circle(frame, (x2 - radius, y2 - radius), radius, color, -1)
+    else:
+        cv2.line(frame, (x1 + radius, y1), (x2 - radius, y1), color, thickness)
+        cv2.line(frame, (x2, y1 + radius), (x2, y2 - radius), color, thickness)
+        cv2.line(frame, (x1 + radius, y2), (x2 - radius, y2), color, thickness)
+        cv2.line(frame, (x1, y1 + radius), (x1, y2 - radius), color, thickness)
+        cv2.ellipse(frame, (x1 + radius, y1 + radius), (radius, radius), 180, 0, 90, color, thickness)
+        cv2.ellipse(frame, (x2 - radius, y1 + radius), (radius, radius), 270, 0, 90, color, thickness)
+        cv2.ellipse(frame, (x1 + radius, y2 - radius), (radius, radius), 90, 0, 90, color, thickness)
+        cv2.ellipse(frame, (x2 - radius, y2 - radius), (radius, radius), 0, 0, 90, color, thickness)
+    
+    return frame
+
+
+def draw_confidence_bar(frame, x, y, confidence, bar_width=100, bar_height=8):
+    """
+    Draw a color-coded confidence bar with percentage.
+    
+    Args:
+        frame: Image to draw on
+        x, y: Top-left position of the bar
+        confidence: Confidence value (0.0 to 1.0)
+        bar_width: Width of the bar in pixels
+        bar_height: Height of the bar in pixels
+    """
+    draw_rounded_rectangle(frame, (x, y), (x + bar_width, y + bar_height), (50, 50, 50), -1, 4)
+    
+    fill_width = int(bar_width * confidence)
+    if confidence >= 0.7:
+        bar_color = (136, 255, 0)
+    elif confidence >= 0.5:
+        bar_color = (0, 215, 255)
+    else:
+        bar_color = (107, 107, 255)
+    
+    if fill_width > 0:
+        draw_rounded_rectangle(frame, (x, y), (x + fill_width, y + bar_height), bar_color, -1, 4)
+    
+    cv2.putText(frame, f"{int(confidence * 100)}%", (x + bar_width + 8, y + 7),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+    
+    return frame
+
 
 def create_title_frame(title, width, height,
                        bottom_text="TEST", bottom_height=200,
@@ -90,8 +154,70 @@ class PostProcess:
         self.model = flow.model
         self.debug = None
         self.debug_str = ""
+        self.frame_count = 0
+        self.fps = 0.0
+        self.last_time = time.time()
+        self.inference_time = 0
         if flow.debug_config and flow.debug_config.post_proc:
             self.debug = debug.Debug(flow.debug_config, "post")
+        
+
+    def update_performance_metrics(self):
+        """
+        Update FPS and performance metrics.
+        """
+        self.frame_count += 1
+        current_time = time.time()
+        elapsed = current_time - self.last_time
+        
+        if elapsed >= 1.0:
+            self.fps = self.frame_count / elapsed
+            self.frame_count = 0
+            self.last_time = current_time
+
+    def update_inference(self, if_time=0):
+        """
+        Update inference value.
+        Args:
+            img: Input frame
+            results: output of inference
+        """
+        self.inference_time = if_time * 1000
+    
+    def draw_performance_panel(self, frame, detection_count=0):
+        """
+        Draw performance metrics panel in top-left corner.
+        """
+        # 1. Increased panel dimensions
+        panel_width = 400
+        panel_height = 170
+        
+        draw_rounded_rectangle(frame, (10, 10), (10 + panel_width, 10 + panel_height), 
+                             (40, 20, 0), -1, 8)
+        draw_rounded_rectangle(frame, (10, 10), (10 + panel_width, 10 + panel_height), 
+                             (255, 212, 0), 2, 8)
+        
+        # 2. Increased Title font scale (0.5 -> 0.8) and thickness (1 -> 2)
+        cv2.putText(frame, "Performance Metrics", (25, 45), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 212, 0), 2)
+        
+        # 3. Increased Label font scales (0.4 -> 0.7) and shifted Y-coordinates down
+        cv2.putText(frame, "FPS:", (25, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        fps_color = (136, 255, 0) if self.fps >= 25 else (0, 215, 255) if self.fps >= 15 else (68, 68, 255)
+        
+        # 4. Shifted Values to the right (x=120 -> x=220) to make room for larger text
+        cv2.putText(frame, f"{self.fps:.1f}", (220, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.7, fps_color, 2)
+        
+        cv2.putText(frame, "Inference Time:", (25, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(frame, f"{self.inference_time:.0f} ms", (220, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 212, 0), 2)
+        
+        cv2.putText(frame, "Detections:", (25, 155), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(frame, str(detection_count), (220, 155), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (136, 255, 0), 2)
+        
+        # 5. Shifted the status circle to the new top-right corner and made it slightly bigger
+        cv2.circle(frame, (380, 35), 8, (68, 68, 255), -1)
+        
+        return frame
 
     def get(flow):
         """
@@ -262,6 +388,7 @@ class PostProcessDetection(PostProcess):
                 writer.writerow(["Time (seconds)", "Detections"])
         
         current_time = time.time() - self.start_time
+        absolute_time = time.time()
 
         orig_h, orig_w = img.shape[:2]
         # Increase UI height slightly (30%) to make room for the chart
@@ -326,6 +453,9 @@ class PostProcessDetection(PostProcess):
 
                 img = self.overlay_bounding_box(img, b, class_name, color)
 
+        self.update_performance_metrics()
+        img = self.draw_performance_panel(img, self.accum_frame_counts.total())
+
         if self.debug:
             self.debug.log(self.debug_str)
             self.debug_str = ""
@@ -343,6 +473,7 @@ class PostProcessDetection(PostProcess):
         elif self.history:
             frame_counts = self.history[-1][1]
         self.history.append((current_time, frame_counts))
+        
 
         if self.last_logged_counts != frame_counts:
             # Format as a clean string for the CSV: "Scalpel: 1 | Suture: 2"
@@ -479,6 +610,10 @@ class PostProcessDetection(PostProcess):
             self.debug_str += str(box) + "\n"
 
         return frame
+
+        
+
+
 
 
 class PostProcessSegmentation(PostProcess):
