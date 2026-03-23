@@ -335,6 +335,7 @@ class PostProcessDetection(PostProcess):
         self.last_seen = {}
         self.accum_frame_counts = Counter()
         self.frames_since_last_avg = 0
+        self.cached_ui = None
 
         # --- NEW: CSV Logging State ---
         self.log_dir = "./medvision_logs"  # Configurable: Change this path to wherever you want the logs saved
@@ -365,36 +366,23 @@ class PostProcessDetection(PostProcess):
         self._dump_logs_to_file()
 
     def __call__(self, img, results):
-        """
-        Post process function for detection
-        Args:
-            img: Input frame
-            results: output of inference
-        """
         # 1. Initialize start time and the CSV File
         if self.start_time is None:
             self.start_time = time.time()
-            
-            # Create the folder if it doesn't exist
             os.makedirs(self.log_dir, exist_ok=True)
-            
-            # Generate file name: e.g., "detection_log_20240512_143000.csv"
             timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.log_filepath = os.path.join(self.log_dir, f"detection_log_{timestamp_str}.csv")
-            
-            # Write the CSV Header
             with open(self.log_filepath, 'w', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow(["Time (seconds)", "Detections"])
         
         current_time = time.time() - self.start_time
-        absolute_time = time.time()
 
         orig_h, orig_w = img.shape[:2]
-        # Increase UI height slightly (30%) to make room for the chart
         ui_height = int(orig_h * 0.30)
         video_height = orig_h - ui_height
 
+        # --- Bounding Box Extraction & Drawing (Runs every frame) ---
         for i, r in enumerate(results):
             r = np.squeeze(r)
             if r.ndim == 1:
@@ -402,9 +390,7 @@ class PostProcessDetection(PostProcess):
             results[i] = r
 
         if self.model.shuffle_indices:
-            results_reordered = []
-            for i in self.model.shuffle_indices:
-                results_reordered.append(results[i])
+            results_reordered = [results[i] for i in self.model.shuffle_indices]
             results = results_reordered
 
         if results[-1].ndim < 2:
@@ -417,9 +403,7 @@ class PostProcessDetection(PostProcess):
                 bbox_copy = copy.deepcopy(bbox)
             else:
                 bbox_copy = copy.deepcopy(np.delete(bbox, self.model.ignore_index, 1))
-            bbox[..., self.model.formatter["dst_indices"]] = bbox_copy[
-                ..., self.model.formatter["src_indices"]
-            ]
+            bbox[..., self.model.formatter["dst_indices"]] = bbox_copy[..., self.model.formatter["src_indices"]]
 
         if not self.model.normalized_detections:
             bbox[..., (0, 2)] /= self.model.resize[0]
@@ -437,11 +421,7 @@ class PostProcessDetection(PostProcess):
                     if not class_name:
                         class_name = "UNDEFINED"
                     if self.model.dataset_info[class_name_idx].supercategory:
-                        class_name = (
-                            self.model.dataset_info[class_name_idx].supercategory
-                            + "/"
-                            + class_name
-                        )
+                        class_name = self.model.dataset_info[class_name_idx].supercategory + "/" + class_name
                     color = self.model.dataset_info[class_name_idx].rgb_color
                 else:
                     class_name = "UNDEFINED"
@@ -460,9 +440,17 @@ class PostProcessDetection(PostProcess):
             self.debug.log(self.debug_str)
             self.debug_str = ""
 
+        # --- History Tracking & Throttling ---
         frame_counts = Counter()
         self.frames_since_last_avg += 1
+        
+        # Determine if we need to redraw the UI this frame
+        update_ui = False
+        if getattr(self, 'cached_ui', None) is None:
+            update_ui = True # Force update on the very first frame
+
         if self.frames_since_last_avg >= 5:
+            update_ui = True # Time to update!
             for class_name, count in self.accum_frame_counts.items():
                 avg_count = math.floor(0.5 + count / 5)
                 if avg_count > 0:
@@ -473,96 +461,89 @@ class PostProcessDetection(PostProcess):
             self.history.append((current_time, frame_counts))
         elif self.history:
             frame_counts = self.history[-1][1]
-            # self.history.append((current_time, frame_counts))
         
+        # --- CSV Logging (Runs intelligently in background) ---
         if self.last_logged_counts != frame_counts:
-            # Format as a clean string for the CSV: "Scalpel: 1 | Suture: 2"
             summary_str = " | ".join([f"{k}: {v}" for k, v in frame_counts.items()]) if frame_counts else "NO DETECTIONS"
-            
-            # Add to the pending queue
             self.pending_log_entries.append((current_time, summary_str))
-            
-            # Update the last known state
             self.last_logged_counts = dict(frame_counts)
 
-        # Trigger the file dump every 1000 frames
         self.frames_since_last_dump += 1
         if self.frames_since_last_dump >= 1000:
             self._dump_logs_to_file()
             self.frames_since_last_dump = 0
 
-        # To prevent the array from growing infinitely and crashing RAM after hours of running,
-        # we can optionally cap the history to the last 5000 frames (approx 2-3 mins at 30fps).
-        # Remove this line if you want it to log infinitely forever.
         if len(self.history) > 1500:
             self.history.pop(0)
 
-        # 2. Resize video and create canvas
-        img_resized = cv2.resize(img, (orig_w, video_height))
-        canvas = np.zeros((orig_h, orig_w, 3), dtype=np.uint8)
-        canvas[0:video_height, 0:orig_w] = img_resized
-
-        # 3. Draw the UI Background
-        ui_bg_color = (40, 30, 30) # Dark Charcoal
-        cv2.rectangle(canvas, (0, video_height), (orig_w, orig_h), ui_bg_color, -1)
-        cv2.line(canvas, (0, video_height), (orig_w, video_height), (0, 255, 0), 2)
-
-        # 4. Text Summary Header
-        summary_text = " | ".join([f"{n}: {c}" for n, c in frame_counts.items()]) if frame_counts else "NO DETECTIONS"
-        cv2.putText(canvas, "LIVE ANALYTICS", (20, video_height + 25), 
-                    cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
-        cv2.putText(canvas, summary_text, (250, video_height + 25), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-
-        # 5. --- DRAW THE DYNAMIC LINE CHART ---
-        chart_x = 20
-        chart_y = video_height + 40
-        chart_w = orig_w - 40
-        chart_h = ui_height - 60
-
-        # Draw Chart Background Area (slightly darker)
-        cv2.rectangle(canvas, (chart_x, chart_y), (chart_x + chart_w, chart_y + chart_h), (50, 0, 0), -1)
-
-        if len(self.history) > 1:
-            # Determine scales
-            max_time = max(current_time, 1.0)
+        # =========================================================
+        # --- UI CACHING: Only redraw the bottom panel when needed ---
+        # =========================================================
+        if update_ui:
+            # Create a sub-canvas ONLY for the UI height
+            ui_panel = np.zeros((ui_height, orig_w, 3), dtype=np.uint8)
             
-            # Find the max object count across all history to scale the Y-axis
-            max_count = 1
-            all_seen_classes = set()
-            for _, counts in self.history:
-                if counts:
-                    max_count = max(max_count, max(counts.values()))
-                    all_seen_classes.update(counts.keys())
+            # Background
+            ui_bg_color = (40, 30, 30) 
+            cv2.rectangle(ui_panel, (0, 0), (orig_w, ui_height), ui_bg_color, -1)
+            cv2.line(ui_panel, (0, 0), (orig_w, 0), (0, 255, 0), 2)
+
+            # Text Summaries
+            summary_text = " | ".join([f"{n}: {c}" for n, c in frame_counts.items()]) if frame_counts else "NO DETECTIONS"
+            cv2.putText(ui_panel, "LIVE ANALYTICS", (20, 25), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
+            cv2.putText(ui_panel, summary_text, (250, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+            # Chart constraints (Notice Y starts at 40 now, not video_height + 40)
+            chart_x = 20
+            chart_y = 40
+            chart_w = orig_w - 40
+            chart_h = ui_height - 60
+
+            cv2.rectangle(ui_panel, (chart_x, chart_y), (chart_x + chart_w, chart_y + chart_h), (50, 0, 0), -1)
+
+            if len(self.history) > 1:
+                max_time = max(current_time, 1.0)
+                max_count = 1
+                all_seen_classes = set()
+                
+                for _, counts in self.history:
+                    if counts:
+                        max_count = max(max_count, max(counts.values()))
+                        all_seen_classes.update(counts.keys())
+                
+                cv2.line(ui_panel, (chart_x, chart_y + chart_h), (chart_x + chart_w, chart_y + chart_h), (100, 100, 100), 1)
+                cv2.putText(ui_panel, f"Max: {max_count}", (chart_x + 5, chart_y + 15), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
+
+                for cls in all_seen_classes:
+                    pts = []
+                    color = self.class_colors.get(cls, (255, 255, 255))
+                    
+                    for t, counts in self.history:
+                        count = counts.get(cls, 0)
+                        px = chart_x + int((t / max_time) * chart_w)
+                        py = chart_y + chart_h - int((count / max_count) * chart_h)
+                        pts.append((px, py))
+                    
+                    pts_arr = np.array(pts, np.int32).reshape((-1, 1, 2))
+                    cv2.polylines(ui_panel, [pts_arr], isClosed=False, color=color, thickness=2)
+                    
+                    last_pt = pts[-1]
+                    cv2.circle(ui_panel, last_pt, 4, color, -1)
             
-            # Draw grid lines for the chart
-            cv2.line(canvas, (chart_x, chart_y + chart_h), (chart_x + chart_w, chart_y + chart_h), (100, 100, 100), 1)
-            cv2.putText(canvas, f"Max: {max_count}", (chart_x + 5, chart_y + 15), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
+            # Save the drawn panel so we don't have to draw it for the next 4 frames
+            self.cached_ui = ui_panel
 
-            # Draw a line for each class observed so far
-            for cls in all_seen_classes:
-                pts = []
-                color = self.class_colors.get(cls, (255, 255, 255))
-                
-                for t, counts in self.history:
-                    count = counts.get(cls, 0)
-                    
-                    # Math to map (time, count) to (pixel_X, pixel_Y)
-                    # X scales down automatically because t is divided by max_time
-                    px = chart_x + int((t / max_time) * chart_w)
-                    
-                    # Y maps such that 0 is at the bottom (chart_y + chart_h) and max_count is at the top
-                    py = chart_y + chart_h - int((count / max_count) * chart_h)
-                    pts.append((px, py))
-                
-                # Draw the line efficiently
-                pts_arr = np.array(pts, np.int32).reshape((-1, 1, 2))
-                cv2.polylines(canvas, [pts_arr], isClosed=False, color=color, thickness=2)
-
-                # Draw a dot at the current end of the line
-                last_pt = pts[-1]
-                cv2.circle(canvas, last_pt, 4, color, -1)
+        # =========================================================
+        # --- ASSEMBLY: Stitch the video and the UI together ---
+        # =========================================================
+        # Resize video to fit the top portion
+        # img_resized = cv2.resize(img, (orig_w, video_height))
+        img_resized = img
+        
+        # Combine the top video and the cached bottom UI using Vertical Stack
+        #canvas = np.vstack((img_resized, self.cached_ui))
+        canvas = np.vstack((self.cached_ui, img_resized))
         return canvas
 
     def overlay_bounding_box(self, frame, box, class_name, color):
