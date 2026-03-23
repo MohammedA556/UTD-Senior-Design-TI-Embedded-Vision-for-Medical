@@ -462,19 +462,19 @@ class PostProcessDetection(PostProcess):
 
         frame_counts = Counter()
         self.frames_since_last_avg += 1
-        if self.frames_since_last_avg >= 3:
+        if self.frames_since_last_avg >= 5:
             for class_name, count in self.accum_frame_counts.items():
-                avg_count = math.floor(0.5 + count / 3)
+                avg_count = math.floor(0.5 + count / 5)
                 if avg_count > 0:
                     frame_counts[class_name] += avg_count
                     self.last_seen[(class_name, avg_count)] = current_time
             self.accum_frame_counts.clear()
             self.frames_since_last_avg = 0
+            self.history.append((current_time, frame_counts))
         elif self.history:
             frame_counts = self.history[-1][1]
-        self.history.append((current_time, frame_counts))
+            # self.history.append((current_time, frame_counts))
         
-
         if self.last_logged_counts != frame_counts:
             # Format as a clean string for the CSV: "Scalpel: 1 | Suture: 2"
             summary_str = " | ".join([f"{k}: {v}" for k, v in frame_counts.items()]) if frame_counts else "NO DETECTIONS"
@@ -494,7 +494,7 @@ class PostProcessDetection(PostProcess):
         # To prevent the array from growing infinitely and crashing RAM after hours of running,
         # we can optionally cap the history to the last 5000 frames (approx 2-3 mins at 30fps).
         # Remove this line if you want it to log infinitely forever.
-        if len(self.history) > 5000:
+        if len(self.history) > 1500:
             self.history.pop(0)
 
         # 2. Resize video and create canvas
@@ -574,7 +574,8 @@ class PostProcessDetection(PostProcess):
             bbox : Bounding box co-ordinates in format [X1 Y1 X2 Y2]
             class_name : Name of the class to overlay
         """
-        box = [
+        confidence = box[5]
+        box_coords = [
             int(box[0] * frame.shape[1]),
             int(box[1] * frame.shape[0]),
             int(box[2] * frame.shape[1]),
@@ -582,32 +583,34 @@ class PostProcessDetection(PostProcess):
         ]
 
         box_color = color
-        luma = ((66*(color[0])+129*(color[1])+25*(color[2])+128)>>8)+16
-        if(luma >= 128):
-            text_color = (0, 0, 0)
-        else:
-            text_color = (255, 255, 255)
-
-        cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), box_color, 2)
-        cv2.rectangle(
-            frame,
-            (int((box[2] + box[0]) / 2) - 5, int((box[3] + box[1]) / 2) + 5),
-            (int((box[2] + box[0]) / 2) + 160, int((box[3] + box[1]) / 2) - 15),
-            box_color,
-            -1,
-        )
-        cv2.putText(
-            frame,
-            class_name,
-            (int((box[2] + box[0]) / 2), int((box[3] + box[1]) / 2)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            text_color,
-        )
+        
+        draw_rounded_rectangle(frame, (box_coords[0], box_coords[1]), 
+                             (box_coords[2], box_coords[3]), box_color, 3, 8)
+        
+        label_width = 180
+        label_height = 50
+        label_x = box_coords[0] + 10
+        label_y = box_coords[1] - label_height - 5
+        
+        if label_y < 0:
+            label_y = box_coords[1] + 5
+        
+        draw_rounded_rectangle(frame, (label_x, label_y), 
+                             (label_x + label_width, label_y + label_height), 
+                             box_color, -1, 6)
+        
+        cv2.putText(frame, class_name, (label_x + 8, label_y + 20),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
+        
+        cv2.putText(frame, "Confidence:", (label_x + 8, label_y + 35),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
+        
+        draw_confidence_bar(frame, label_x + 75, label_y + 28, confidence, 
+                          bar_width=90, bar_height=6)
 
         if self.debug:
             self.debug_str += class_name
-            self.debug_str += str(box) + "\n"
+            self.debug_str += str(box_coords) + "\n"
 
         return frame
 
