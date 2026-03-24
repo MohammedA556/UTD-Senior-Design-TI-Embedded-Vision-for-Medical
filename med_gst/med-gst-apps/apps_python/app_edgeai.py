@@ -90,10 +90,11 @@ def show_final_summary(last_seen, class_colors, start_time):
     
     # Start the display process in the background
     proc = subprocess.Popen(gst_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     time.sleep(1)
     print(f"\n\n" + "="*60)
     print("SHOWING SUMMARY ON SCREEN...")
-    print("Session will end in 60 seconds OR press ENTER to exit now.")
+    print("Program will end in 60 seconds OR press ENTER to exit now.")
     print("="*60 + "\n")
 
     # 4. Wait for 5 seconds OR a key press in the terminal
