@@ -36,6 +36,10 @@ import numpy as np
 import os                      
 import subprocess     
 import select  
+import struct
+import time
+import importlib        
+import config_parser
 from datetime import datetime   
 
 from edge_ai_class import EdgeAIDemo
@@ -86,10 +90,10 @@ def show_final_summary(last_seen, class_colors, start_time):
     
     # Start the display process in the background
     proc = subprocess.Popen(gst_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    print(f"\n" + "="*60)
+    time.sleep(1)
+    print(f"\n\n" + "="*60)
     print("SHOWING SUMMARY ON SCREEN...")
-    print("Program will end in 60 seconds OR press ENTER to exit now.")
+    print("Session will end in 60 seconds OR press ENTER to exit now.")
     print("="*60 + "\n")
 
     # 4. Wait for 5 seconds OR a key press in the terminal
@@ -119,48 +123,117 @@ def show_final_summary(last_seen, class_colors, start_time):
 def main(sys_argv):
     args = utils.get_cmdline_args(sys_argv)
 
-    with open(args.config, "r") as f:
-        config = yaml.safe_load(f)
+    # Linux Input Event Format for 64-bit AM62A (2 longs, 2 shorts, 1 int = 24 bytes)
+    EVENT_FORMAT = "llHHi" 
+    EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
+    EV_KEY = 1
+    BTN_LEFT = 272
 
-    try:
-        demo = EdgeAIDemo(config)
-        demo.start()
+    keep_cycling = True
 
-        if args.verbose:
-            utils.print_stdout = True
+    while keep_cycling:
+        demo = None # <-- FIX 2: Initialize to None so the finally block doesn't crash
+        try:
+            # --- FIX 1: Hard reset TI's static counters and lists ---
+            importlib.reload(config_parser)
+            utils.report_list.clear()
 
-        if not args.no_curses:
-            utils.enable_curses_reports(demo.title)
+            # Load the config fresh every single cycle
+            with open(args.config, "r") as f:
+                config = yaml.safe_load(f)
+            # --------------------------------------------------------
 
-        demo.wait_for_exit()
-    except KeyboardInterrupt:
-        demo.stop()
-    finally:
-        #pass
-        # --- NEW: Extract the data before tearing down the demo ---
-        last_seen_data = {}
-        class_colors = {}
-        session_start_time = None
-        
-        # We loop through the pipes to grab the dictionaries from post_process
-        for pipe in demo.infer_pipes:
-            if hasattr(pipe, 'post_proc') and hasattr(pipe.post_proc, 'last_seen'):
-                last_seen_data.update(pipe.post_proc.last_seen)
-                class_colors.update(pipe.post_proc.class_colors)
-            if hasattr(pipe.post_proc, 'start_time') and session_start_time is None:
-                session_start_time = session_start_time = pipe.post_proc.start_time
+            print("\n[INFO] Starting/Restarting Demo Cycle...")
+            demo = EdgeAIDemo(config)
+            demo.start()
 
-        # Standard cleanup
-        utils.disable_curses_reports()
-        
-        # --- NEW: Show the final static frame! ---
-        if last_seen_data:
-            show_final_summary(last_seen_data, class_colors, session_start_time)
+            if args.verbose:
+                utils.print_stdout = True
 
-    #utils.disable_curses_reports()
+            if not args.no_curses:
+                utils.enable_curses_reports(demo.title)
 
-    del demo
+            # =========================================================
+            # --- MINIMALLY INVASIVE REPLACEMENT FOR wait_for_exit() ---
+            # =========================================================
+            try:
+                mouse_fd = open("/dev/input/event0", "rb")
+                os.set_blocking(mouse_fd.fileno(), False)
+            except Exception as e:
+                mouse_fd = None
 
+            click_start_time = None
+            HOLD_THRESHOLD = 1.0 # 1 Second hold to end cycle
+
+            while True:
+                # 1. Check if demo ended internally (e.g. video finished)
+                if all(i.stop_thread for i in demo.infer_pipes):
+                    demo.stop()
+                    break
+
+                # 2. Check mouse input
+                if mouse_fd:
+                    try:
+                        while True:
+                            event_data = mouse_fd.read(EVENT_SIZE)
+                            if not event_data: break
+                            
+                            _, _, ev_type, ev_code, ev_value = struct.unpack(EVENT_FORMAT, event_data)
+                            if ev_type == EV_KEY and ev_code == BTN_LEFT:
+                                if ev_value == 1: # Mouse down
+                                    click_start_time = time.time()
+                                elif ev_value == 0: # Mouse up
+                                    click_start_time = None
+                    except (BlockingIOError, TypeError):
+                        pass
+
+                # 3. Check if 1-second hold is met
+                if click_start_time and (time.time() - click_start_time) > HOLD_THRESHOLD:
+                    demo.stop()
+                    break
+
+                time.sleep(0.05)
+
+            if mouse_fd:
+                mouse_fd.close()
+            # =========================================================
+
+        except KeyboardInterrupt:
+            # Ctrl+C pressed. Stop the demo and exit the main loop forever
+            if demo:
+                demo.stop()
+            keep_cycling = False 
+
+        finally:
+            last_seen_data = {}
+            class_colors = {}
+            session_start_time = None
+            
+            # --- FIX 3: Only extract data if demo actually initialized ---
+            if demo is not None:
+                # We loop through the pipes to grab the dictionaries from post_process
+                for pipe in demo.infer_pipes:
+                    if hasattr(pipe, 'post_proc') and hasattr(pipe.post_proc, 'last_seen'):
+                        last_seen_data.update(pipe.post_proc.last_seen)
+                        class_colors.update(pipe.post_proc.class_colors)
+                    if hasattr(pipe.post_proc, 'start_time') and session_start_time is None:
+                        session_start_time = pipe.post_proc.start_time
+
+                # Standard cleanup
+                utils.disable_curses_reports()
+            
+            # --- Show the final static frame! ---
+            if last_seen_data:
+                show_final_summary(last_seen_data, class_colors, session_start_time)
+
+            if demo is not None:
+                del demo
+
+            if keep_cycling:
+                print("\n[INFO] Cycle complete. Restarting in 1 second...")
+                time.sleep(1)
+            else:
+                print("\n[INFO] Application Shutdown Complete.")
 
 if __name__ == "__main__":
     main(sys.argv)
