@@ -14,9 +14,11 @@ Requires: GStreamer 1.0 installed on the AM62A target board.
 """
 
 import subprocess
+import signal
 import argparse
 import os
 import sys
+import time
 from datetime import datetime
 
 
@@ -64,17 +66,32 @@ def get_raw_pipeline(device, width, height, framerate, output_file):
 def record(pipeline_str, duration):
     """
     Run gst-launch-1.0 with the given pipeline for the specified duration.
+    Sends SIGINT (not SIGTERM) so gst-launch -e can properly send EOS
+    and finalize the MP4 file.
     """
-    cmd = f'timeout {duration} gst-launch-1.0 -e {pipeline_str}'
+    cmd_str = f'gst-launch-1.0 -e {pipeline_str}'
     print(f"Recording for {duration} seconds...")
     print(f"Pipeline: {pipeline_str}\n")
     
     try:
-        process = subprocess.Popen(cmd, shell=True)
-        process.wait()
+        process = subprocess.Popen(cmd_str, shell=True, preexec_fn=os.setsid)
+        time.sleep(duration)
+        
+        print(f"\n{duration} seconds reached. Finalizing MP4 file...")
+        # Send SIGINT to the process group so gst-launch handles EOS properly
+        os.killpg(os.getpgid(process.pid), signal.SIGINT)
+        # Give it time to write the moov atom and close cleanly
+        process.wait(timeout=15)
+        print("Recording finalized.")
+        
     except KeyboardInterrupt:
-        print("\nRecording stopped by user.")
-        process.terminate()
+        print("\nStopping early. Finalizing MP4 file...")
+        os.killpg(os.getpgid(process.pid), signal.SIGINT)
+        process.wait(timeout=15)
+        print("Recording finalized.")
+    except subprocess.TimeoutExpired:
+        print("Pipeline didn't stop cleanly, forcing termination...")
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
         process.wait()
 
 
