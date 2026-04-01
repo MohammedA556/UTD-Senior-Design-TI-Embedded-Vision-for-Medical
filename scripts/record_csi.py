@@ -38,7 +38,7 @@ def get_pipeline(device, subdev, width, height, framerate, output_file, sensor_i
         f'format-msb=7 ! '
         f'video/x-raw, format=NV12, width={width}, height={height} ! '
         f'tiovxmemalloc pool-size=4 ! '
-        f'v4l2h264enc bitrate=10000000 ! '
+        f'v4l2h264enc extra-controls="controls,frame_level_rate_control_enable=1,video_bitrate=10000000,video_gop_size=30" ! '
         f'h264parse ! '
         f'mp4mux ! '
         f'filesink location={output_file}'
@@ -53,7 +53,7 @@ def get_raw_pipeline(device, width, height, framerate, output_file):
     pipeline = (
         f'v4l2src device={device} ! '
         f'video/x-raw, width={width}, height={height}, framerate={framerate}/1 ! '
-        f'v4l2h264enc bitrate=10000000 ! '
+        f'v4l2h264enc extra-controls="controls,frame_level_rate_control_enable=1,video_bitrate=10000000,video_gop_size=30" ! '
         f'h264parse ! '
         f'mp4mux ! '
         f'filesink location={output_file}'
