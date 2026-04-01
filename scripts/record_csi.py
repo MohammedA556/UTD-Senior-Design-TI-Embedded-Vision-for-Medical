@@ -25,6 +25,7 @@ def get_pipeline(device, subdev, width, height, framerate, output_file, sensor_i
     Build the GStreamer pipeline string for CSI camera recording on AM62A.
     """
     # Raw bayer pipeline with TI ISP for IMX219
+    # Note: dcc-2a-file and device are sink pad properties (sink_0::), not element properties
     pipeline = (
         f'v4l2src device={device} io-mode=5 ! '
         f'queue leaky=2 ! '
@@ -32,8 +33,9 @@ def get_pipeline(device, subdev, width, height, framerate, output_file, sensor_i
         f'tiovxisp '
         f'sensor-name=SENSOR_SONY_IMX219_RPI '
         f'dcc-isp-file=/opt/imaging/{sensor_id}/linear/dcc_viss.bin '
-        f'dcc-2a-file=/opt/imaging/{sensor_id}/linear/dcc_2a.bin '
-        f'device={subdev} format-msb=7 ! '
+        f'sink_0::dcc-2a-file=/opt/imaging/{sensor_id}/linear/dcc_2a.bin '
+        f'sink_0::device={subdev} '
+        f'format-msb=7 ! '
         f'video/x-raw, format=NV12, width={width}, height={height} ! '
         f'tiovxmemalloc pool-size=4 ! '
         f'v4l2h264enc bitrate=10000000 ! '
