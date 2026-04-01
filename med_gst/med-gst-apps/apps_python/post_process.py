@@ -379,7 +379,7 @@ class PostProcessDetection(PostProcess):
         current_time = time.time() - self.start_time
 
         orig_h, orig_w = img.shape[:2]
-        ui_height = int(orig_h * 0.30)
+        ui_height = int(orig_h * 0.15)
         video_height = orig_h - ui_height
 
         # --- Bounding Box Extraction & Drawing (Runs every frame) ---
