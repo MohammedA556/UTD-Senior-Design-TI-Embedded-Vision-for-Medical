@@ -42,7 +42,7 @@ def get_pipeline(device, subdev, width, height, framerate, output_file, sensor_i
         f'tiovxmemalloc pool-size=4 ! '
         f'v4l2h264enc extra-controls="controls,frame_level_rate_control_enable=1,video_bitrate=10000000,video_gop_size=30" ! '
         f'h264parse ! '
-        f'mp4mux ! '
+        f'matroskamux ! '
         f'filesink location={output_file}'
     )
     return pipeline
@@ -57,7 +57,7 @@ def get_raw_pipeline(device, width, height, framerate, output_file):
         f'video/x-raw, width={width}, height={height}, framerate={framerate}/1 ! '
         f'v4l2h264enc extra-controls="controls,frame_level_rate_control_enable=1,video_bitrate=10000000,video_gop_size=30" ! '
         f'h264parse ! '
-        f'mp4mux ! '
+        f'matroskamux ! '
         f'filesink location={output_file}'
     )
     return pipeline
@@ -123,7 +123,7 @@ def main():
     
     if args.output is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output = f"recording_{timestamp}.mp4"
+        args.output = f"recording_{timestamp}.mkv"
     
     os.makedirs(args.output_dir, exist_ok=True)
     output_path = os.path.join(args.output_dir, args.output)
