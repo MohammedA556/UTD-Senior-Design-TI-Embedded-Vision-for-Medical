@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple CSI camera recording script for the TI AM62A with IMX219.
-Records video from the CSI camera and saves it as MP4.
+Records video from the CSI camera and saves it as MKV, then converts to MP4.
 
 Usage:
     python3 record_csi.py                          # Record for 30 seconds (default)
@@ -9,6 +9,7 @@ Usage:
     python3 record_csi.py -d 60 -o my_video.mp4    # Custom output filename
     python3 record_csi.py -r 1280x720              # Custom resolution
     python3 record_csi.py --device /dev/video2      # Custom video device
+    python3 record_csi.py --no-convert             # Keep as MKV, skip MP4 conversion
 
 Requires: GStreamer 1.0 installed on the AM62A target board.
 """
@@ -63,6 +64,30 @@ def get_raw_pipeline(device, width, height, framerate, output_file):
     return pipeline
 
 
+def convert_to_mp4(mkv_path):
+    """
+    Convert an MKV file to MP4 using ffmpeg stream copy (no re-encoding).
+    The MKV file is deleted after successful conversion.
+    """
+    mp4_path = mkv_path.replace('.mkv', '.mp4')
+    print(f"Converting to MP4: {mp4_path} ...")
+    
+    result = subprocess.run(
+        ['ffmpeg', '-i', mkv_path, '-c', 'copy', '-y', mp4_path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE
+    )
+    
+    if result.returncode == 0:
+        os.remove(mkv_path)
+        print(f"Conversion done. Removed intermediate MKV.")
+        return mp4_path
+    else:
+        print(f"ffmpeg conversion failed. Keeping MKV file.")
+        print(result.stderr.decode())
+        return mkv_path
+
+
 def record(pipeline_str, duration):
     """
     Run gst-launch-1.0 with the given pipeline for the specified duration.
@@ -85,7 +110,7 @@ def record(pipeline_str, duration):
         print("Recording finalized.")
         
     except KeyboardInterrupt:
-        print("\nStopping early. Finalizing MP4 file...")
+        print("\nStopping early. Finalizing MKV file...")
         os.killpg(os.getpgid(process.pid), signal.SIGINT)
         process.wait(timeout=15)
         print("Recording finalized.")
@@ -115,6 +140,8 @@ def main():
                         help="Use raw/non-bayer pipeline (for USB or other cameras)")
     parser.add_argument("--output-dir", type=str, default="/opt/edgeai-test-data/output",
                         help="Output directory (default: /opt/edgeai-test-data/output)")
+    parser.add_argument("--no-convert", action="store_true",
+                        help="Skip MP4 conversion, keep output as MKV")
     
     args = parser.parse_args()
     
@@ -148,6 +175,8 @@ def main():
     record(pipeline, args.duration)
     
     if os.path.exists(output_path):
+        if not args.no_convert:
+            output_path = convert_to_mp4(output_path)
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
         print(f"\nRecording saved: {output_path} ({size_mb:.1f} MB)")
     else:
