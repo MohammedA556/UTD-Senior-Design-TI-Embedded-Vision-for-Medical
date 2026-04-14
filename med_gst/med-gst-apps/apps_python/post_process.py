@@ -39,6 +39,7 @@ import os
 import csv
 import math
 from datetime import datetime
+import threading
 
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
@@ -215,7 +216,8 @@ class PostProcess:
         cv2.putText(frame, str(detection_count), (220, 155), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (136, 255, 0), 2)
         
         # 5. Shifted the status circle to the new top-right corner and made it slightly bigger
-        cv2.circle(frame, (380, 35), 8, (68, 68, 255), -1)
+        status_color = (136, 255, 0) if detection_count > 0 else (68, 68, 255)
+        cv2.circle(frame, (380, 35), 8, status_color, -1)
         
         return frame
 
@@ -338,11 +340,50 @@ class PostProcessDetection(PostProcess):
         self.cached_ui = None
 
         # --- NEW: CSV Logging State ---
-        self.log_dir = "./medvision_logs"  # Configurable: Change this path to wherever you want the logs saved
+        self.log_dir = "/home/root/medvision_logs"  # Configurable: Change this path to wherever you want the logs saved
         self.log_filepath = None
         self.last_logged_counts = None     # Tracks changes
         self.pending_log_entries = []      # Queue for the chunk dumper
         self.frames_since_last_dump = 0
+
+        # --- Auto Instrument Verification ---
+        self.expected_count = 4
+        self.verified_tools = set()
+        self.missing_tools = []
+        self.verify_status = 'ok'  # 'ok' or 'missing'
+        self.last_verify_time = 0
+
+    def draw_instrument_status(self, frame):
+        """Draw always-on instrument status panel top right."""
+        h, w = frame.shape[:2]
+        panel_w = 420
+        panel_h = 110
+        x = w - panel_w - 10
+        y = 10
+
+        # Background
+        if self.verify_status == 'ok':
+            bg_color = (0, 80, 0)
+            border_color = (0, 255, 0)
+            status_text = f"ALL {self.expected_count} INSTRUMENTS PRESENT"
+            status_color = (0, 255, 0)
+        else:
+            bg_color = (0, 0, 120)
+            border_color = (0, 0, 255)
+            missing_str = ", ".join(self.missing_tools) if self.missing_tools else "?"
+            status_text = f"MISSING: {missing_str}"
+            status_color = (0, 100, 255)
+
+        draw_rounded_rectangle(frame, (x, y), (x + panel_w, y + panel_h), bg_color, -1, 8)
+        draw_rounded_rectangle(frame, (x, y), (x + panel_w, y + panel_h), border_color, 2, 8)
+
+        cv2.putText(frame, "INSTRUMENT COUNT", (x + 10, y + 28),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        cv2.putText(frame, status_text, (x + 10, y + 60),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+        cv2.putText(frame, f"Expected: {self.expected_count}  |  Detected: {len(self.verified_tools)}",
+                   (x + 10, y + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        return frame
 
     def _dump_logs_to_file(self):
         """Helper function to append pending logs to the CSV file safely."""
@@ -433,8 +474,36 @@ class PostProcessDetection(PostProcess):
 
                 img = self.overlay_bounding_box(img, b, class_name, color)
 
+        # --- Auto Instrument Verification (every 2 seconds) ---
+        current_time_abs = time.time()
+        if current_time_abs - self.last_verify_time >= 2.0:
+            self.last_verify_time = current_time_abs
+            current_tools = set()
+            for b in bbox:
+                if b[5] > self.model.viz_threshold:
+                    if type(self.model.label_offset) == dict:
+                        idx = self.model.label_offset[int(b[4])]
+                    else:
+                        idx = self.model.label_offset + int(b[4])
+                    if idx in self.model.dataset_info:
+                        cn = self.model.dataset_info[idx].name
+                        if cn and cn != "UNDEFINED":
+                            current_tools.add(cn)
+            self.verified_tools = current_tools
+            if len(current_tools) >= self.expected_count:
+                self.verify_status = 'ok'
+                self.missing_tools = []
+            else:
+                self.verify_status = 'missing'
+                seen = set(self.class_colors.keys())
+                self.missing_tools = list(seen - current_tools)
+                if not self.missing_tools:
+                    self.missing_tools = [f"{self.expected_count - len(current_tools)} tool(s)"]
+
+        img = self.draw_instrument_status(img)
         self.update_performance_metrics()
-        img = self.draw_performance_panel(img, self.accum_frame_counts.total())
+        current_count = sum(1 for b in bbox if b[5] > self.model.viz_threshold)
+        img = self.draw_performance_panel(img, current_count)
 
         if self.debug:
             self.debug.log(self.debug_str)
@@ -449,10 +518,10 @@ class PostProcessDetection(PostProcess):
         if getattr(self, 'cached_ui', None) is None:
             update_ui = True # Force update on the very first frame
 
-        if self.frames_since_last_avg >= 5:
+        if self.frames_since_last_avg >= 10:
             update_ui = True # Time to update!
             for class_name, count in self.accum_frame_counts.items():
-                avg_count = math.floor(0.5 + count / 5)
+                avg_count = math.floor(0.5 + count / 10)
                 if avg_count > 0:
                     frame_counts[class_name] += avg_count
                     self.last_seen[(class_name, avg_count)] = current_time
@@ -472,6 +541,13 @@ class PostProcessDetection(PostProcess):
         if self.frames_since_last_dump >= 1000:
             self._dump_logs_to_file()
             self.frames_since_last_dump = 0
+
+        # --- Auto Instrument Verification ---
+        self.expected_count = 4
+        self.verified_tools = set()
+        self.missing_tools = []
+        self.verify_status = 'ok'  # 'ok' or 'missing'
+        self.last_verify_time = 0
 
         if len(self.history) > 1500:
             self.history.pop(0)
@@ -542,7 +618,7 @@ class PostProcessDetection(PostProcess):
         img_resized = img
         
         # Combine the top video and the cached bottom UI using Vertical Stack
-        #canvas = np.vstack((img_resized, self.cached_ui))
+        #canvas = np.vstack((self.cached_ui, img_resized))
         canvas = np.vstack((self.cached_ui, img_resized))
         return canvas
 
@@ -581,7 +657,7 @@ class PostProcessDetection(PostProcess):
                              box_color, -1, 6)
         
         cv2.putText(frame, class_name, (label_x + 8, label_y + 20),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
         cv2.putText(frame, "Confidence:", (label_x + 8, label_y + 35),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
