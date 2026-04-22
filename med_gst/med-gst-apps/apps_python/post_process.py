@@ -347,7 +347,7 @@ class PostProcessDetection(PostProcess):
         self.frames_since_last_dump = 0
 
         # --- Auto Instrument Verification ---
-        self.expected_count = 4
+        self.expected_count = 3
         self.verified_tools = set()
         self.missing_tools = []
         self.verify_status = 'ok'  # 'ok' or 'missing'
@@ -420,7 +420,7 @@ class PostProcessDetection(PostProcess):
         current_time = time.time() - self.start_time
 
         orig_h, orig_w = img.shape[:2]
-        ui_height = int(orig_h * 0.15)
+        ui_height = int(orig_h * 0.1)
         video_height = orig_h - ui_height
 
         # --- Bounding Box Extraction & Drawing (Runs every frame) ---
@@ -450,7 +450,35 @@ class PostProcessDetection(PostProcess):
             bbox[..., (0, 2)] /= self.model.resize[0]
             bbox[..., (1, 3)] /= self.model.resize[1]
 
+        # Keep only highest confidence detection per class
+        # Per-class max detections — allow multiple gauze
+        max_per_class_name = {'Gauze': 3, 'Scalpel': 1, 'Hemostat': 1}
+        class_detections = {}
         for b in bbox:
+            if b[5] > self.model.viz_threshold:
+                class_idx = int(b[4])
+                if class_idx not in class_detections:
+                    class_detections[class_idx] = []
+                class_detections[class_idx].append(b)
+        bbox_filtered = []
+        for class_idx, boxes in class_detections.items():
+            boxes_sorted = sorted(boxes, key=lambda x: x[5], reverse=True)
+            # Get class name for this idx
+            if type(self.model.label_offset) == dict:
+                name_idx = self.model.label_offset.get(class_idx, class_idx)
+            else:
+                name_idx = self.model.label_offset + class_idx
+            class_name_check = self.model.dataset_info.get(name_idx)
+            cname = class_name_check.name if class_name_check else 'Unknown'
+            max_allowed = max_per_class_name.get(cname, 1)
+            bbox_filtered.extend(boxes_sorted[:max_allowed])
+        # Minimum box size filter - ignore tiny detections (normalized coords)
+        bbox_filtered = [
+            b for b in bbox_filtered
+            if (b[2] - b[0]) > 0.06 and (b[3] - b[1]) > 0.06
+        ]
+
+        for b in bbox_filtered:
             if b[5] > self.model.viz_threshold:
                 if type(self.model.label_offset) == dict:
                     class_name_idx = self.model.label_offset[int(b[4])]
@@ -543,7 +571,7 @@ class PostProcessDetection(PostProcess):
             self.frames_since_last_dump = 0
 
         # --- Auto Instrument Verification ---
-        self.expected_count = 4
+        self.expected_count = 3
         self.verified_tools = set()
         self.missing_tools = []
         self.verify_status = 'ok'  # 'ok' or 'missing'
