@@ -9,43 +9,8 @@ import sys
 import utils
 import time
 import copy
-from threading import Lock, Thread
-import subprocess
+from threading import Lock
 from gst_element_map import gst_element_map
-
-# Tracks subdev paths that have had AWB locked so they can be unlocked on exit
-_awb_locked_subdevs = []
-
-
-def lock_white_balance(subdev, settle_seconds=3):
-    """
-    Lock AWB to the current ISP-settled gains after a brief warmup.
-    Called in a background thread so it doesn't block the pipeline.
-    Point the camera at the normal scene (no blue towel) during settle_seconds.
-    """
-    time.sleep(settle_seconds)
-    result = subprocess.run(
-        ['v4l2-ctl', '-d', subdev, '--set-ctrl', 'auto_white_balance=0'],
-        capture_output=True
-    )
-    if result.returncode == 0:
-        _awb_locked_subdevs.append(subdev)
-        print(f"[AWB] White balance locked on {subdev}")
-    else:
-        print(f"[AWB] Could not lock white balance on {subdev} (control may be unsupported)")
-
-
-def unlock_white_balance(subdev):
-    """
-    Re-enable auto white balance on a subdev.
-    """
-    subprocess.run(
-        ['v4l2-ctl', '-d', subdev, '--set-ctrl', 'auto_white_balance=1'],
-        capture_output=True
-    )
-    if subdev in _awb_locked_subdevs:
-        _awb_locked_subdevs.remove(subdev)
-    print(f"[AWB] Auto white balance re-enabled on {subdev}")
 
 Gst.init(None)
 
@@ -214,8 +179,6 @@ class GstPipe:
         self.sink_pipe.set_state(Gst.State.NULL)
         for src in self.src_pipe:
             src.set_state(Gst.State.NULL)
-        for subdev in list(_awb_locked_subdevs):
-            unlock_white_balance(subdev)
 
 
 def dump_dot_file(data, prefix):
@@ -1354,13 +1317,6 @@ def get_gst_pipe(flows, outputs):
                 Gst.ChildProxy.set_property(elem, "sink_0::dcc-2a-file", dcc_2a_file)
                 if not f.input.format.startswith("bggi"):
                     Gst.ChildProxy.set_property(elem, "sink_0::device", f.input.subdev_id)
-                # Lock AWB after settle time so it doesn't chase dominant colors (e.g. blue towels)
-                awb_thread = Thread(
-                    target=lock_white_balance,
-                    args=(f.input.subdev_id,),
-                    daemon=True
-                )
-                awb_thread.start()
 
         # Get format of last input element after caps negotiation
         input_format = get_format(gst_player, f.input.gst_inp_elements)
