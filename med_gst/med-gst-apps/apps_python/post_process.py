@@ -475,7 +475,7 @@ class PostProcessDetection(PostProcess):
         # Minimum box size filter - ignore tiny detections (normalized coords)
         bbox_filtered = [
             b for b in bbox_filtered
-            if (b[2] - b[0]) > 0.06 and (b[3] - b[1]) > 0.06
+            if (b[2] - b[0]) > 0.03 and (b[3] - b[1]) > 0.03
         ]
 
         for b in bbox_filtered:
