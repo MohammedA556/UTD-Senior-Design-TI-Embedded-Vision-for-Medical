@@ -1,6 +1,5 @@
 title: "YOLOX_S_LITE_IMX219"
 log_level: 2
-
 inputs:
   input0:
     source: /dev/video-imx219-cam0
@@ -9,23 +8,14 @@ inputs:
     height: 1080
     framerate: 30
     subdev-id: /dev/v4l-imx219-subdev0
-
 models:
   model0:
-    model_path: /opt/model_zoo/yolox_surgical_tools_v3
-    viz_threshold: 0.6
-
+    model_path: /opt/model_zoo/blue-v2-tiny-m3
+    viz_threshold: 0.05
 outputs:
   output0:
     sink: kmssink
     width: 1920
     height: 1080
-    
-    show_bottom_ui: true
-    bottom_ui_height: 160
-    bottom_ui_bg: "#3D2727"
-    bottom_ui_text: "INSTRUMENT CTR"
-    bottom_ui_text_color: "#FFFFFF"
-
 flows:
-  flow0: [input0, model0, output0, [320,150,1600,900]]
+  flow0: [input0, model0, output0, [0,0,1920,1080]]
