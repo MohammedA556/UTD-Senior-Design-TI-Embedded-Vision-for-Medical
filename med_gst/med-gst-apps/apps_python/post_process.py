@@ -57,7 +57,6 @@ def draw_rounded_rectangle(frame, pt1, pt2, color, thickness=-1, radius=8):
     """
     x1, y1 = pt1
     x2, y2 = pt2
-    
     if thickness == -1:
         cv2.rectangle(frame, (x1 + radius, y1), (x2 - radius, y2), color, -1)
         cv2.rectangle(frame, (x1, y1 + radius), (x2, y2 - radius), color, -1)
@@ -155,6 +154,7 @@ class PostProcess:
         self.model = flow.model
         self.debug = None
         self.debug_str = ""
+        # Additional metric variables
         self.frame_count = 0
         self.fps = 0.0
         self.last_time = time.time()
@@ -170,7 +170,7 @@ class PostProcess:
         self.frame_count += 1
         current_time = time.time()
         elapsed = current_time - self.last_time
-        
+        # Calculate frame per second after a second has passed 
         if elapsed >= 1.0:
             self.fps = self.frame_count / elapsed
             self.frame_count = 0
@@ -189,33 +189,32 @@ class PostProcess:
         """
         Draw performance metrics panel in top-left corner.
         """
-        # 1. Increased panel dimensions
+        # Panel dimensions
         panel_width = 400
         panel_height = 170
-        
+        # Background panel
         draw_rounded_rectangle(frame, (10, 10), (10 + panel_width, 10 + panel_height), 
                              (40, 20, 0), -1, 8)
         draw_rounded_rectangle(frame, (10, 10), (10 + panel_width, 10 + panel_height), 
                              (255, 212, 0), 2, 8)
         
-        # 2. Increased Title font scale (0.5 -> 0.8) and thickness (1 -> 2)
+        # Title 
         cv2.putText(frame, "Performance Metrics", (25, 45), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 212, 0), 2)
         
-        # 3. Increased Label font scales (0.4 -> 0.7) and shifted Y-coordinates down
+        # Metrics Display
+        # FPS
         cv2.putText(frame, "FPS:", (25, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         fps_color = (136, 255, 0) if self.fps >= 25 else (0, 215, 255) if self.fps >= 15 else (68, 68, 255)
-        
-        # 4. Shifted Values to the right (x=120 -> x=220) to make room for larger text
         cv2.putText(frame, f"{self.fps:.1f}", (220, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.7, fps_color, 2)
-        
+        # Inference Time
         cv2.putText(frame, "Inference Time:", (25, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         cv2.putText(frame, f"{self.inference_time:.0f} ms", (220, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 212, 0), 2)
-        
+        # Total General Detections 
         cv2.putText(frame, "Detections:", (25, 155), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         cv2.putText(frame, str(detection_count), (220, 155), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (136, 255, 0), 2)
         
-        # 5. Shifted the status circle to the new top-right corner and made it slightly bigger
+        # Status color
         status_color = (136, 255, 0) if detection_count > 0 else (68, 68, 255)
         cv2.circle(frame, (380, 35), 8, status_color, -1)
         
@@ -339,14 +338,14 @@ class PostProcessDetection(PostProcess):
         self.frames_since_last_avg = 0
         self.cached_ui = None
 
-        # --- NEW: CSV Logging State ---
-        self.log_dir = "/home/root/medvision_logs"  # Configurable: Change this path to wherever you want the logs saved
+        # Session log configuration
+        self.log_dir = "/home/root/medvision_logs"  
         self.log_filepath = None
-        self.last_logged_counts = None     # Tracks changes
-        self.pending_log_entries = []      # Queue for the chunk dumper
+        self.last_logged_counts = None     
+        self.pending_log_entries = []      
         self.frames_since_last_dump = 0
 
-        # --- Auto Instrument Verification ---
+        # Instrument Verification state
         self.expected_count = 3
         self.verified_tools = set()
         self.missing_tools = []
@@ -354,7 +353,9 @@ class PostProcessDetection(PostProcess):
         self.last_verify_time = 0
 
     def draw_instrument_status(self, frame):
-        """Draw always-on instrument status panel top right."""
+        """
+        Draw always-on instrument status panel top right.
+        """
         h, w = frame.shape[:2]
         panel_w = 420
         panel_h = 110
@@ -376,17 +377,21 @@ class PostProcessDetection(PostProcess):
 
         draw_rounded_rectangle(frame, (x, y), (x + panel_w, y + panel_h), bg_color, -1, 8)
         draw_rounded_rectangle(frame, (x, y), (x + panel_w, y + panel_h), border_color, 2, 8)
-
+        # Title
         cv2.putText(frame, "INSTRUMENT COUNT", (x + 10, y + 28),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        # Status indicating if tools are missing from expectation
         cv2.putText(frame, status_text, (x + 10, y + 60),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+        # Compares expected with total detected after verification
         cv2.putText(frame, f"Expected: {self.expected_count}  |  Detected: {len(self.verified_tools)}",
                    (x + 10, y + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         return frame
 
     def _dump_logs_to_file(self):
-        """Helper function to append pending logs to the CSV file safely."""
+        """
+        Helper function to append pending logs to the CSV file safely.
+        """
         if not self.pending_log_entries or not self.log_filepath:
             return
         
@@ -407,7 +412,7 @@ class PostProcessDetection(PostProcess):
         self._dump_logs_to_file()
 
     def __call__(self, img, results):
-        # 1. Initialize start time and the CSV File
+        # Initialize start time and the CSV File
         if self.start_time is None:
             self.start_time = time.time()
             os.makedirs(self.log_dir, exist_ok=True)
@@ -418,12 +423,12 @@ class PostProcessDetection(PostProcess):
                 writer.writerow(["Time (seconds)", "Detections"])
         
         current_time = time.time() - self.start_time
-
+        # Timeline UI dimensions and offsets
         orig_h, orig_w = img.shape[:2]
         ui_height = int(orig_h * 0.1)
         video_height = orig_h - ui_height
 
-        # --- Bounding Box Extraction & Drawing (Runs every frame) ---
+        # Bounding Box Extraction & Drawing (Runs every frame) 
         for i, r in enumerate(results):
             r = np.squeeze(r)
             if r.ndim == 1:
@@ -477,7 +482,7 @@ class PostProcessDetection(PostProcess):
             b for b in bbox_filtered
             if (b[2] - b[0]) > 0.03 and (b[3] - b[1]) > 0.03
         ]
-
+        # Apply normal bounding boxes to filtered detections
         for b in bbox_filtered:
             if b[5] > self.model.viz_threshold:
                 if type(self.model.label_offset) == dict:
@@ -497,14 +502,17 @@ class PostProcessDetection(PostProcess):
                     color = (20, 220, 20)
 
                 if class_name != "UNDEFINED":
+                    # Accumulate counts for this window of time
                     self.accum_frame_counts[class_name] += 1
                     self.class_colors[class_name] = color
 
                 img = self.overlay_bounding_box(img, b, class_name, color)
 
-        # --- Auto Instrument Verification (every 2 seconds) ---
+        # Auto Instrument Verification (every 2 seconds) 
+        # Used to update verification panel
         current_time_abs = time.time()
         if current_time_abs - self.last_verify_time >= 2.0:
+            # Count up the filtered tools at this current interval
             self.last_verify_time = current_time_abs
             current_tools = set()
             for b in bbox:
@@ -519,16 +527,19 @@ class PostProcessDetection(PostProcess):
                             current_tools.add(cn)
             self.verified_tools = current_tools
             if len(current_tools) >= self.expected_count:
+                # All known tools are present
                 self.verify_status = 'ok'
                 self.missing_tools = []
             else:
                 self.verify_status = 'missing'
                 seen = set(self.class_colors.keys())
                 self.missing_tools = list(seen - current_tools)
+                # Indicate what tools are missing
                 if not self.missing_tools:
                     self.missing_tools = [f"{self.expected_count - len(current_tools)} tool(s)"]
-
+        # Display verification status
         img = self.draw_instrument_status(img)
+        # Display performance panel
         self.update_performance_metrics()
         current_count = sum(1 for b in bbox if b[5] > self.model.viz_threshold)
         img = self.draw_performance_panel(img, current_count)
@@ -537,17 +548,20 @@ class PostProcessDetection(PostProcess):
             self.debug.log(self.debug_str)
             self.debug_str = ""
 
-        # --- History Tracking & Throttling ---
+        # History Tracking & Throttling 
         frame_counts = Counter()
         self.frames_since_last_avg += 1
         
         # Determine if we need to redraw the UI this frame
         update_ui = False
         if getattr(self, 'cached_ui', None) is None:
-            update_ui = True # Force update on the very first frame
+            # Force update on the very first frame
+            update_ui = True 
 
         if self.frames_since_last_avg >= 10:
-            update_ui = True # Time to update!
+            # 10 frames have passed so we update the timeline UI
+            update_ui = True 
+            # Take an windowed average over accumulated frames
             for class_name, count in self.accum_frame_counts.items():
                 avg_count = math.floor(0.5 + count / 10)
                 if avg_count > 0:
@@ -555,11 +569,13 @@ class PostProcessDetection(PostProcess):
                     self.last_seen[(class_name, avg_count)] = current_time
             self.accum_frame_counts.clear()
             self.frames_since_last_avg = 0
+            # Current window frame count is equal to the average and append to timeline history
             self.history.append((current_time, frame_counts))
         elif self.history:
+            # Otherwise append a duplicate of the previous interval's counts
             frame_counts = self.history[-1][1]
         
-        # --- CSV Logging (Runs intelligently in background) ---
+        # Append current history to the logging list if it a tool count has changed 
         if self.last_logged_counts != frame_counts:
             summary_str = " | ".join([f"{k}: {v}" for k, v in frame_counts.items()]) if frame_counts else "NO DETECTIONS"
             self.pending_log_entries.append((current_time, summary_str))
@@ -567,24 +583,25 @@ class PostProcessDetection(PostProcess):
 
         self.frames_since_last_dump += 1
         if self.frames_since_last_dump >= 1000:
+            # Every 1000 frames dump the logging list to the associated CSV log
             self._dump_logs_to_file()
             self.frames_since_last_dump = 0
 
-        # --- Auto Instrument Verification ---
+        # Instrument verification initial conditions
         self.expected_count = 3
         self.verified_tools = set()
         self.missing_tools = []
         self.verify_status = 'ok'  # 'ok' or 'missing'
         self.last_verify_time = 0
-
+        
+        # Pop history to cap it at the recent 1500 entries
         if len(self.history) > 1500:
             self.history.pop(0)
 
-        # =========================================================
-        # --- UI CACHING: Only redraw the bottom panel when needed ---
-        # =========================================================
+
+        #  Only update timeline UI every 10 frames
         if update_ui:
-            # Create a sub-canvas ONLY for the UI height
+            # Timeline panel
             ui_panel = np.zeros((ui_height, orig_w, 3), dtype=np.uint8)
             
             # Background
@@ -597,7 +614,7 @@ class PostProcessDetection(PostProcess):
             cv2.putText(ui_panel, "LIVE ANALYTICS", (20, 25), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
             cv2.putText(ui_panel, summary_text, (250, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-            # Chart constraints (Notice Y starts at 40 now, not video_height + 40)
+            # Chart constraints 
             chart_x = 20
             chart_y = 40
             chart_w = orig_w - 40
@@ -606,19 +623,21 @@ class PostProcessDetection(PostProcess):
             cv2.rectangle(ui_panel, (chart_x, chart_y), (chart_x + chart_w, chart_y + chart_h), (50, 0, 0), -1)
 
             if len(self.history) > 1:
+                # If there is a count, then:
+                # Get the total time
                 max_time = max(current_time, 1.0)
                 max_count = 1
                 all_seen_classes = set()
-                
+                # Collect the counts that have been seen so far, ignoring classes that have not been shown
                 for _, counts in self.history:
                     if counts:
                         max_count = max(max_count, max(counts.values()))
                         all_seen_classes.update(counts.keys())
-                
+                # Chart background
                 cv2.line(ui_panel, (chart_x, chart_y + chart_h), (chart_x + chart_w, chart_y + chart_h), (100, 100, 100), 1)
                 cv2.putText(ui_panel, f"Max: {max_count}", (chart_x + 5, chart_y + 15), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
-
+                # For each class, draw a line plot for the count over time
                 for cls in all_seen_classes:
                     pts = []
                     color = self.class_colors.get(cls, (255, 255, 255))
@@ -635,18 +654,11 @@ class PostProcessDetection(PostProcess):
                     last_pt = pts[-1]
                     cv2.circle(ui_panel, last_pt, 4, color, -1)
             
-            # Save the drawn panel so we don't have to draw it for the next 4 frames
+            # Save the new timeline to use for the next 10 frames
             self.cached_ui = ui_panel
 
-        # =========================================================
-        # --- ASSEMBLY: Stitch the video and the UI together ---
-        # =========================================================
-        # Resize video to fit the top portion
-        # img_resized = cv2.resize(img, (orig_w, video_height))
+        # To save on Post Processing time, simply append the timeline UI ontop of the video frame
         img_resized = img
-        
-        # Combine the top video and the cached bottom UI using Vertical Stack
-        #canvas = np.vstack((self.cached_ui, img_resized))
         canvas = np.vstack((self.cached_ui, img_resized))
         return canvas
 
@@ -679,7 +691,7 @@ class PostProcessDetection(PostProcess):
         
         if label_y < 0:
             label_y = box_coords[1] + 5
-        
+        # Draw bounding boxes with rounded corners instead
         draw_rounded_rectangle(frame, (label_x, label_y), 
                              (label_x + label_width, label_y + label_height), 
                              box_color, -1, 6)
@@ -689,7 +701,7 @@ class PostProcessDetection(PostProcess):
         
         cv2.putText(frame, "Confidence:", (label_x + 8, label_y + 35),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
-        
+        # Display confidence bar corresponding with this detection
         draw_confidence_bar(frame, label_x + 75, label_y + 28, confidence, 
                           bar_width=90, bar_height=6)
 
