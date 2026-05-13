@@ -25,7 +25,7 @@ The demo is contained in med-gst-apps/ directory, including demo code and model.
 
 Clone the repo to the AM62A Board (running Edge AI Linux SDK 10.1), and in the cloned repo run:
 ```
-cd /med-gst-apps/
+cd med-gst-apps/
 ./apps_python/app_edgeai.py ./configs/med_imx219.yaml
 ```
 Alternatively you can also use python3
