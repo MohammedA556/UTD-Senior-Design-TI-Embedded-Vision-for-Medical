@@ -1,0 +1,39 @@
+info: {}
+categories:
+- id: 0
+  name: SD_Augmented
+  supercategory: none
+- id: 1
+  name: Gauze
+  supercategory: SD_Augmented
+- id: 2
+  name: Hemostat
+  supercategory: SD_Augmented
+- id: 3
+  name: Scalpel
+  supercategory: SD_Augmented
+color_map:
+- - 0
+  - 0
+  - 0
+- - 0
+  - 0
+  - 255
+- - 0
+  - 255
+  - 0
+- - 0
+  - 255
+  - 255
+- - 255
+  - 0
+  - 0
+- - 255
+  - 0
+  - 255
+- - 255
+  - 255
+  - 0
+- - 255
+  - 255
+  - 255
