@@ -31,7 +31,7 @@ cd /med-gst-apps/
 Alternatively you can also use python3
 
 ```
-python3 apps_python/app_edgeai.py configs/med_im219.yaml
+python3 apps_python/app_edgeai.py configs/med_imx219.yaml
 ```
 
 ## Dataset
