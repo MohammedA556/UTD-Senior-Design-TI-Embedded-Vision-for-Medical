@@ -23,6 +23,8 @@ The base demo is built on the TI [edgeai-gst-apps](https://github.com/TexasInstr
 ## How to run the Demo
 The demo is contained in med-gst-apps/ directory, including demo code and model. The extracted model is contained in med-gst-apps/models/tiny-lite-m3. Otherwise the tarball is included in the same models directory as tiny_lite_m3.tar.gz. 
 
+Keep in mind the model and demo is specifically set for up to 2 gauze, 1 curved hemostat, and a scalpel at this current stage. Blue cloth background was used in training the model as well. 
+
 Clone the repo to the AM62A Board (running Edge AI Linux SDK 10.1), and in the cloned repo run:
 ```
 cd med-gst-apps/
